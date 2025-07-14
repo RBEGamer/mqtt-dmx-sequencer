@@ -207,9 +207,13 @@ class MQTTDMXSequencer:
         def get_config():
             """Get current configuration"""
             try:
+                config = self.config.copy() if hasattr(self, 'config') else {}
+                # Add frontend_mqtt_passthrough from settings
+                passthrough = self.config_manager.settings.get('frontend_mqtt_passthrough', False)
+                config['frontend_mqtt_passthrough'] = passthrough
                 return jsonify({
                     "success": True,
-                    "data": self.config
+                    "data": config
                 })
             except Exception as e:
                 return jsonify({
@@ -592,6 +596,9 @@ class MQTTDMXSequencer:
                 self.dmx_manager.set_channel(channel, value)
                 self.dmx_manager.send()
                 
+                # Track channel update for frontend sync
+                self.last_mqtt_channel_update = {'channel': channel, 'value': value}
+                
                 return jsonify({
                     "success": True,
                     "message": f"Channel {channel} set to {value}"
@@ -630,6 +637,11 @@ class MQTTDMXSequencer:
                         self.dmx_manager.set_channel(i + 1, value)
                 
                 self.dmx_manager.send()
+                
+                # Track channel updates for frontend sync (track the last non-zero channel)
+                for i, value in enumerate(channels):
+                    if 0 <= value <= 255 and value > 0:
+                        self.last_mqtt_channel_update = {'channel': i + 1, 'value': value}
                 
                 return jsonify({
                     "success": True,
@@ -815,6 +827,23 @@ class MQTTDMXSequencer:
                     "success": False,
                     "error": str(e)
                 }), 500
+
+        @self.flask_app.route('/api/mqtt/publish', methods=['POST'])
+        def mqtt_publish():
+            """Publish an MQTT message from the frontend"""
+            try:
+                data = request.get_json()
+                topic = data.get('topic')
+                payload = data.get('payload')
+                if not topic or payload is None:
+                    return jsonify({"success": False, "error": "Missing topic or payload"}), 400
+                if self.client and self.mqtt_connected:
+                    self.client.publish(topic, str(payload))
+                    return jsonify({"success": True})
+                else:
+                    return jsonify({"success": False, "error": "MQTT not connected"}), 503
+            except Exception as e:
+                return jsonify({"success": False, "error": str(e)}), 500
 
     def save_config(self):
         """Save current configuration to file"""

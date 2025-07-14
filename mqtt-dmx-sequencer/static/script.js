@@ -16,11 +16,13 @@ class DMXConsole {
         this.sequenceTimer = null;
         this.stepProgressTimer = null;
         this.autostartConfig = null;
+        this.mqttPassthroughEnabled = false;
         
         this.init();
     }
 
-    init() {
+    async init() {
+        await this.fetchMQTTPassthroughSetting();
         this.setupEventListeners();
         this.loadSettings();
         this.generateFaders();
@@ -41,6 +43,20 @@ class DMXConsole {
         
         // Poll for MQTT channel updates every 200ms
         setInterval(() => this.pollMQTTChannelUpdates(), 200);
+    }
+
+    async fetchMQTTPassthroughSetting() {
+        try {
+            const response = await fetch(`${this.apiUrl}/config`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.data && typeof data.data.frontend_mqtt_passthrough !== 'undefined') {
+                    this.mqttPassthroughEnabled = data.data.frontend_mqtt_passthrough;
+                }
+            }
+        } catch (error) {
+            // Ignore errors, default to false
+        }
     }
 
     setupEventListeners() {
@@ -114,6 +130,10 @@ class DMXConsole {
                 this.currentChannels[channel - 1] = value;
                 valueDisplay.textContent = value;
                 this.sendDMXChannel(channel, value);
+                // MQTT passthrough
+                if (this.mqttPassthroughEnabled) {
+                    await this.sendMQTTPublish(`dmx/set/channel/${channel}`, value);
+                }
             });
 
             container.appendChild(fader);
@@ -233,14 +253,19 @@ class DMXConsole {
     }
 
     async pollPlaybackStatus() {
-        if (!this.isPlaying) return;
-        
         try {
             const response = await fetch(`${this.apiUrl}/playback/status`);
             if (response.ok) {
                 const data = await response.json();
-                if (data.success && data.status) {
-                    const status = data.status;
+                if (data.success && data.data) {
+                    const status = data.data;
+                    
+                    // Sync frontend playing state with backend
+                    const backendIsPlaying = status.is_playing;
+                    if (backendIsPlaying !== this.isPlaying) {
+                        this.isPlaying = backendIsPlaying;
+                        this.updatePlaybackInfo();
+                    }
                     
                     // Update current step info if available
                     if (status.current_step !== undefined && status.current_step_data) {
@@ -253,6 +278,9 @@ class DMXConsole {
                         if (status.current_step_data.duration) {
                             this.startStepProgress(status.current_step_data);
                         }
+                    } else if (!backendIsPlaying) {
+                        // Hide step info if not playing
+                        this.hideSequenceStepInfo();
                     }
                 }
             }
@@ -989,7 +1017,11 @@ class DMXConsole {
                 this.stepStartTime = null;
                 this.updatePlaybackInfo();
                 this.showSequenceStepInfo();
-                this.showNotification('Sequence started', 'success');
+                
+                // Get sequence name for notification
+                const sequence = this.sequences.find(s => s.id === sequenceId);
+                const sequenceName = sequence ? sequence.name : sequenceId;
+                this.showNotification(`Sequence '${sequenceName}' started`, 'success');
             }
         } catch (error) {
             this.showNotification('Failed to start sequence', 'error');

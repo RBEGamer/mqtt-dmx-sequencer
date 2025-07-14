@@ -37,5 +37,6 @@
   "sequences": {
     "default_duration": 1.0,
     "auto_play": true
-  }
+  },
+  "frontend_mqtt_passthrough": true
 } 
