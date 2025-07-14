@@ -90,3 +90,9 @@
 1752482795: Client auto-D98D490A-E553-0F89-CC66-B2CE97B11D56 disconnected.
 1752482838: Received PINGREQ from mqtt-dmx-sequencer
 1752482838: Sending PINGRESP to mqtt-dmx-sequencer
+1752482898: Received PINGREQ from mqtt-dmx-sequencer
+1752482898: Sending PINGRESP to mqtt-dmx-sequencer
+1752482958: Received PINGREQ from mqtt-dmx-sequencer
+1752482958: Sending PINGRESP to mqtt-dmx-sequencer
+1752483019: Received PINGREQ from mqtt-dmx-sequencer
+1752483019: Sending PINGRESP to mqtt-dmx-sequencer

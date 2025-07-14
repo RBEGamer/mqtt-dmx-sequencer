@@ -8,7 +8,7 @@ from pathlib import Path
 class ConfigManager:
     """Manages application configuration from settings.json"""
     
-    def __init__(self, settings_path: str = None):
+    def __init__(self, settings_path: str = None, print_on_load: bool = False):
         if settings_path is None:
             script_dir = os.path.dirname(os.path.abspath(__file__))
             # Look for settings.json in parent directory (project root)
@@ -16,7 +16,12 @@ class ConfigManager:
             settings_path = os.path.join(project_root, 'settings.json')
         
         self.settings_path = settings_path
+        self.print_on_load = print_on_load
         self.settings = self.load_settings()
+        
+        # Print configuration if requested
+        if self.print_on_load:
+            self.print_full_config()
     
     def load_settings(self) -> Dict[str, Any]:
         """Load settings from JSON file"""
@@ -213,4 +218,73 @@ class ConfigManager:
         scenes_config = self.get_scenes_config()
         print(f"Default Transition Time: {scenes_config.get('default_transition_time', 'Not set')}s")
         
-        print("=" * 50) 
+        print("=" * 50)
+    
+    def print_full_config(self):
+        """Print the complete loaded configuration in detail"""
+        print("Full Configuration Details:")
+        print("=" * 60)
+        
+        # MQTT Configuration
+        mqtt_config = self.get_mqtt_config()
+        print("MQTT Configuration:")
+        print(f"  URL: {mqtt_config.get('url', 'Not set')}")
+        print(f"  Port: {mqtt_config.get('port', 'Not set')}")
+        print(f"  Username: {mqtt_config.get('username', 'Not set')}")
+        print(f"  Password: {'*' * len(mqtt_config.get('password', '')) if mqtt_config.get('password') else 'Not set'}")
+        print(f"  Client ID: {mqtt_config.get('client_id', 'Not set')}")
+        print(f"  Keepalive: {mqtt_config.get('keepalive', 'Not set')}")
+        print(f"  Clean Session: {mqtt_config.get('clean_session', 'Not set')}")
+        
+        # DMX Configuration
+        dmx_configs = self.get_dmx_configs()
+        print(f"\nDMX Senders ({len(dmx_configs)}):")
+        for i, config in enumerate(dmx_configs, 1):
+            print(f"  {i}. {config.get('name', 'Unnamed')} ({config.get('type', 'Unknown')})")
+            print(f"     Target: {config.get('target', 'Not set')}")
+            print(f"     Universe: {config.get('universe', 'Not set')}")
+            if config.get('type') == 'e131':
+                print(f"     FPS: {config.get('fps', 'Not set')}")
+            elif config.get('type') == 'artnet':
+                print(f"     Port: {config.get('port', 'Not set')}")
+        
+        # DMX Protocol Settings
+        dmx_settings = self.settings.get("dmx", {})
+        print("\nDMX Protocol Settings:")
+        
+        artnet_config = dmx_settings.get("artnet", {})
+        print("  Art-Net:")
+        print(f"    Default Port: {artnet_config.get('default_port', 'Not set')}")
+        print(f"    Refresh Rate: {artnet_config.get('refresh_rate', 'Not set')}")
+        
+        e131_config = dmx_settings.get("e131", {})
+        print("  E1.31:")
+        print(f"    Default FPS: {e131_config.get('default_fps', 'Not set')}")
+        print(f"    Multicast: {e131_config.get('multicast', 'Not set')}")
+        
+        # Logging Configuration
+        logging_config = self.get_logging_config()
+        print("\nLogging Configuration:")
+        print(f"  Level: {logging_config.get('level', 'Not set')}")
+        print(f"  Format: {logging_config.get('format', 'Not set')}")
+        
+        # Scenes Configuration
+        scenes_config = self.get_scenes_config()
+        print("\nScenes Configuration:")
+        print(f"  Default Transition Time: {scenes_config.get('default_transition_time', 'Not set')}s")
+        print(f"  Auto Send: {scenes_config.get('auto_send', 'Not set')}")
+        
+        # Sequences Configuration
+        sequences_config = self.get_sequences_config()
+        print("\nSequences Configuration:")
+        print(f"  Default Duration: {sequences_config.get('default_duration', 'Not set')}s")
+        print(f"  Auto Play: {sequences_config.get('auto_play', 'Not set')}")
+        
+        print("=" * 60)
+    
+    def print_raw_config(self):
+        """Print the raw JSON configuration"""
+        print("Raw Configuration (JSON):")
+        print("=" * 40)
+        print(json.dumps(self.settings, indent=2))
+        print("=" * 40) 
