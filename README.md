@@ -1,6 +1,6 @@
 # MQTT DMX Sequencer (Python)
 
-> Control DMX devices via Art-Net or E1.31 by MQTT with Python.
+> Control DMX devices via Art-Net or E1.31 by MQTT with MQTT.
 
 A Python implementation of the MQTT DMX Sequencer that allows you to control DMX devices through MQTT messages. Supports both Art-Net and E1.31 protocols for DMX output with the ability to run multiple DMX senders simultaneously and comprehensive configuration management.
 
@@ -28,7 +28,9 @@ A Python implementation of the MQTT DMX Sequencer that allows you to control DMX
 2. Install required dependencies:
 
 ```bash
-pip install paho-mqtt pyartnet sacn
+$ python3 -m venv .venv 
+$ cd mqtt-dmx-sequencer
+$ pip3 install -r requirements.txt
 ```
 
 ## Project Structure
@@ -42,10 +44,6 @@ mqtt-dmx-sequencer/
 │   ├── config_manager.py   # Configuration management
 │   ├── settings.json       # Application settings
 │   └── config.json         # Scenes and sequences
-├── config/                 # Configuration directory (optional)
-├── mosquitto/              # MQTT broker configuration
-├── run.py                  # Launcher script
-├── Dockerfile
 ├── docker-compose.yaml
 └── README.md
 ```
