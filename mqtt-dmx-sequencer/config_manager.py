@@ -11,7 +11,9 @@ class ConfigManager:
     def __init__(self, settings_path: str = None):
         if settings_path is None:
             script_dir = os.path.dirname(os.path.abspath(__file__))
-            settings_path = os.path.join(script_dir, 'settings.json')
+            # Look for settings.json in parent directory (project root)
+            project_root = os.path.dirname(script_dir)
+            settings_path = os.path.join(project_root, 'settings.json')
         
         self.settings_path = settings_path
         self.settings = self.load_settings()

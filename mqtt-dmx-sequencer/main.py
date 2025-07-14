@@ -293,9 +293,11 @@ class MQTTDMXSequencer:
 
 if __name__ == '__main__':
     script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Look for config files in parent directory (project root)
+    project_root = os.path.dirname(script_dir)
     
     parser = argparse.ArgumentParser(description='MQTT DMX Sequencer with configuration file support')
-    parser.add_argument('--config-dir', help='Directory containing settings.json and config.json files', default=script_dir)
+    parser.add_argument('--config-dir', help='Directory containing settings.json and config.json files', default=project_root)
     parser.add_argument('--show-config', action='store_true', help='Show current configuration and exit')
     
     args = parser.parse_args()

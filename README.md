@@ -31,6 +31,25 @@ A Python implementation of the MQTT DMX Sequencer that allows you to control DMX
 pip install paho-mqtt pyartnet sacn
 ```
 
+## Project Structure
+
+```
+mqtt-dmx-sequencer/
+├── mqtt-dmx-sequencer/      # Python package
+│   ├── __init__.py
+│   ├── main.py             # Main application
+│   ├── dmx_senders.py      # DMX sender implementations
+│   ├── config_manager.py   # Configuration management
+│   ├── settings.json       # Application settings
+│   └── config.json         # Scenes and sequences
+├── config/                 # Configuration directory (optional)
+├── mosquitto/              # MQTT broker configuration
+├── run.py                  # Launcher script
+├── Dockerfile
+├── docker-compose.yaml
+└── README.md
+```
+
 ## Configuration
 
 The application uses two configuration files:
@@ -144,13 +163,16 @@ This file contains scene and sequence definitions:
 
 ```bash
 # Use default configuration files in current directory
-python main.py
+python run.py
 
 # Use configuration files from specific directory
-python main.py --config-dir /path/to/config/directory
+python run.py --config-dir /path/to/config/directory
 
 # Show current configuration
-python main.py --show-config
+python run.py --show-config
+
+# Run directly from package directory (alternative)
+python mqtt-dmx-sequencer/main.py
 ```
 
 ### Command Line Options
@@ -174,16 +196,16 @@ config-directory/
 
 ```bash
 # Use default configuration (current directory)
-python main.py
+python run.py
 
 # Use configuration from custom directory
-python main.py --config-dir /etc/mqtt-dmx-sequencer
+python run.py --config-dir /etc/mqtt-dmx-sequencer
 
 # Use configuration from user's home directory
-python main.py --config-dir ~/.mqtt-dmx-sequencer
+python run.py --config-dir ~/.mqtt-dmx-sequencer
 
 # Show configuration without starting the application
-python main.py --show-config
+python run.py --show-config
 ```
 
 ### Multiple DMX Senders Example
@@ -334,19 +356,19 @@ mosquitto_pub -h 192.168.178.75 -t "dmx/config/save" -m ""
 
 The application uses a modular architecture with the following components:
 
-### Configuration Management (`config_manager.py`)
+### Configuration Management (`mqtt-dmx-sequencer/config_manager.py`)
 - **ConfigManager**: Manages application settings
 - Loads and saves configuration from JSON files
 - Validates configuration data
 - Merges command line arguments with settings
 
-### DMX Senders Module (`dmx_senders.py`)
+### DMX Senders Module (`mqtt-dmx-sequencer/dmx_senders.py`)
 - **DMXSender**: Abstract base class for all DMX senders
 - **ArtNetSender**: Art-Net protocol implementation
 - **E131Sender**: E1.31 protocol implementation
 - **DMXManager**: Manages multiple DMX senders
 
-### Main Application (`main.py`)
+### Main Application (`mqtt-dmx-sequencer/main.py`)
 - **MQTTDMXSequencer**: Main application class
 - Handles MQTT communication
 - Manages scenes and sequences
@@ -390,7 +412,7 @@ The application uses a modular architecture with the following components:
 Run with verbose logging to troubleshoot:
 
 ```bash
-python main.py --verbosity debug
+python run.py --verbosity debug
 ```
 
 ### Configuration Verification
@@ -399,7 +421,7 @@ Check the current configuration:
 
 ```bash
 # Show configuration from command line
-python main.py --show-config
+python run.py --show-config
 
 # Show configuration via MQTT
 mosquitto_pub -h 192.168.178.75 -t "dmx/config/show" -m ""
