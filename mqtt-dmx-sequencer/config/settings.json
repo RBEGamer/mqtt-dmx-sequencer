@@ -1,6 +1,6 @@
 {
   "mqtt": {
-    "url": "mqtt",
+    "url": "mqtt://localhost",
     "port": 1883,
     "username": "",
     "password": "",

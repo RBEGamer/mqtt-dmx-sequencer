@@ -22,9 +22,13 @@ class MQTTDMXSequencer:
         self.config_manager = ConfigManager(settings_path)
         self.config = self.load_config(config_path)
         self.dmx_manager = DMXManager()
-        self.client = mqtt.Client()
-        self.client.on_connect = self.on_connect
-        self.client.on_message = self.on_message
+        
+        # MQTT connection state
+        self.client = None
+        self.mqtt_connected = False
+        self.subscriptions_done = False
+        self.mqtt_reconnect_attempts = 0
+        self.max_mqtt_reconnect_attempts = 3
         
         # Autostart management
         self.autostart_config = self.config.get('autostart', {})
@@ -67,9 +71,10 @@ class MQTTDMXSequencer:
         
         # Set MQTT client properties
         client_id = mqtt_config.get('client_id', 'mqtt-dmx-sequencer')
-        self.client = mqtt.Client(client_id=client_id)
+        self.client = mqtt.Client(client_id=client_id, clean_session=True)
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
+        self.client.on_disconnect = self.on_disconnect
         
         # Set authentication if provided
         username = mqtt_config.get('username')
@@ -79,10 +84,13 @@ class MQTTDMXSequencer:
         
         # Connect to broker
         try:
-            self.client.connect(host, port, keepalive=mqtt_config.get('keepalive', 60))
             print(f"Connecting to MQTT broker: {host}:{port}")
+            self.client.connect(host, port, keepalive=mqtt_config.get('keepalive', 60))
+            print("MQTT connection established successfully")
         except Exception as e:
             print(f"Failed to connect to MQTT broker: {e}")
+            print("Continuing without MQTT functionality")
+            self.client = None
 
     def parse_mqtt_url(self, url):
         url = url.replace('mqtt://', '')
@@ -763,28 +771,70 @@ class MQTTDMXSequencer:
             self.current_autostart = None
 
     def on_connect(self, client, userdata, flags, rc):
-        print("Connected to MQTT broker.")
-        
-        # Subscribe to sequence topics
-        for topic in self.config.get('sequences', {}).keys():
-            print(f"Subscribing to topic: {topic}")
-            client.subscribe(topic)
-        
-        # Subscribe to individual channel control topics
-        client.subscribe("dmx/set/channel/#")
-        print("Subscribed to dmx/set/channel/# for individual channel control")
-        
-        # Subscribe to scene control topics
-        client.subscribe("dmx/scene/#")
-        print("Subscribed to dmx/scene/# for scene control")
-        
-        # Subscribe to DMX sender management topics
-        client.subscribe("dmx/sender/#")
-        print("Subscribed to dmx/sender/# for sender management")
-        
-        # Subscribe to configuration management topics
-        client.subscribe("dmx/config/#")
-        print("Subscribed to dmx/config/# for configuration management")
+        if rc == 0:
+            print("Connected to MQTT broker.")
+            self.mqtt_connected = True
+            
+            # Only subscribe once to avoid duplicate subscriptions
+            if not self.subscriptions_done:
+                # Subscribe to sequence topics
+                for topic in self.config.get('sequences', {}).keys():
+                    print(f"Subscribing to topic: {topic}")
+                    client.subscribe(topic)
+                
+                # Subscribe to individual channel control topics
+                client.subscribe("dmx/set/channel/#")
+                print("Subscribed to dmx/set/channel/# for individual channel control")
+                
+                # Subscribe to scene control topics
+                client.subscribe("dmx/scene/#")
+                print("Subscribed to dmx/scene/# for scene control")
+                
+                # Subscribe to DMX sender management topics
+                client.subscribe("dmx/sender/#")
+                print("Subscribed to dmx/sender/# for sender management")
+                
+                # Subscribe to configuration management topics
+                client.subscribe("dmx/config/#")
+                print("Subscribed to dmx/config/# for configuration management")
+                
+                self.subscriptions_done = True
+        else:
+            print(f"Failed to connect to MQTT broker with return code: {rc}")
+            self.mqtt_connected = False
+
+    def on_disconnect(self, client, userdata, rc):
+        if rc != 0:
+            print(f"Unexpected MQTT disconnection with return code: {rc}")
+            self.mqtt_reconnect_attempts += 1
+            
+            if self.mqtt_reconnect_attempts <= self.max_mqtt_reconnect_attempts:
+                # Reset subscription flag to allow resubscription on reconnect
+                self.subscriptions_done = False
+                # Attempt to reconnect after a delay
+                print(f"Attempting to reconnect in 5 seconds... (attempt {self.mqtt_reconnect_attempts}/{self.max_mqtt_reconnect_attempts})")
+                time.sleep(5)
+                try:
+                    client.reconnect()
+                except Exception as e:
+                    print(f"Reconnection failed: {e}")
+                    if self.mqtt_reconnect_attempts >= self.max_mqtt_reconnect_attempts:
+                        print("Maximum reconnection attempts reached. Continuing without MQTT functionality.")
+                        self.stop_mqtt_reconnection()
+            else:
+                print("Maximum reconnection attempts reached. Continuing without MQTT functionality.")
+                self.stop_mqtt_reconnection()
+        else:
+            print("MQTT broker disconnected")
+        self.mqtt_connected = False
+
+    def stop_mqtt_reconnection(self):
+        """Stop MQTT reconnection attempts"""
+        if self.client:
+            self.client.disconnect()
+            self.client = None
+            self.mqtt_connected = False
+            print("MQTT reconnection stopped")
 
     def on_message(self, client, userdata, msg):
         topic = msg.topic
@@ -1008,10 +1058,20 @@ class MQTTDMXSequencer:
                 print(f"Starting autostart: {self.autostart_config.get('type')} '{self.autostart_config.get('id')}'")
                 self.start_autostart()
             
-            self.client.loop_forever()
+            # Start MQTT loop with automatic reconnection
+            if self.client:
+                self.client.loop_forever()
+            else:
+                print("MQTT client not initialized, running without MQTT")
+                # Keep the application running even without MQTT
+                while True:
+                    time.sleep(1)
+                    
         except KeyboardInterrupt:
             print("Shutting down...")
             self.disable_current_autostart()
+            if self.client:
+                self.client.disconnect()
             self.dmx_manager.stop_all()
             print("Shutdown complete.")
 
@@ -1027,6 +1087,7 @@ if __name__ == '__main__':
     parser.add_argument('--print-config', action='store_true', help='Print full configuration details on startup')
     parser.add_argument('--disable-web-server', action='store_true', help='Disable the Flask web server')
     parser.add_argument('--web-port', type=int, help='Port for the Flask web server (overrides settings.json)')
+    parser.add_argument('--disable-mqtt', action='store_true', help='Disable MQTT functionality')
     
     args = parser.parse_args()
     
@@ -1049,4 +1110,10 @@ if __name__ == '__main__':
         enable_web_server=not args.disable_web_server,
         web_port=args.web_port
     )
+    
+    # Disable MQTT if requested
+    if args.disable_mqtt:
+        print("MQTT functionality disabled by command line argument")
+        sequencer.stop_mqtt_reconnection()
+    
     sequencer.run()
