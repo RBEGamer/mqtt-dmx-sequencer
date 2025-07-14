@@ -32,6 +32,16 @@ class DMXSender(ABC):
     
     def set_channel(self, channel: int, value: int):
         """Set a specific channel value"""
+        # Convert string values to integers if needed
+        try:
+            if isinstance(channel, str):
+                channel = int(channel)
+            if isinstance(value, str):
+                value = int(value)
+        except (ValueError, TypeError):
+            print(f"Invalid channel ({channel}) or value ({value})")
+            return
+        
         with self.lock:
             if 1 <= channel <= 512 and 0 <= value <= 255:
                 self.universe_data[channel - 1] = value
@@ -40,6 +50,16 @@ class DMXSender(ABC):
         """Set multiple channels at once"""
         with self.lock:
             for channel, value in channels.items():
+                # Convert string values to integers if needed
+                try:
+                    if isinstance(channel, str):
+                        channel = int(channel)
+                    if isinstance(value, str):
+                        value = int(value)
+                except (ValueError, TypeError):
+                    print(f"Invalid channel ({channel}) or value ({value})")
+                    continue
+                
                 if 1 <= channel <= 512 and 0 <= value <= 255:
                     self.universe_data[channel - 1] = value
     
@@ -188,6 +208,16 @@ class DMXManager:
     
     def set_channel(self, channel: int, value: int, sender_name: str = None):
         """Set a channel on specific sender or all senders"""
+        # Convert string values to integers if needed
+        try:
+            if isinstance(channel, str):
+                channel = int(channel)
+            if isinstance(value, str):
+                value = int(value)
+        except (ValueError, TypeError):
+            print(f"Invalid channel ({channel}) or value ({value})")
+            return
+        
         with self.lock:
             if sender_name:
                 if sender_name in self.senders:
@@ -202,17 +232,30 @@ class DMXManager:
     
     def set_channels(self, channels: Dict[int, int], sender_name: str = None):
         """Set multiple channels on specific sender or all senders"""
+        # Convert string keys to integers if needed
+        dmx_channels = {}
+        for channel_key, value in channels.items():
+            try:
+                if isinstance(channel_key, str):
+                    channel = int(channel_key)
+                else:
+                    channel = channel_key
+                dmx_channels[channel] = value
+            except (ValueError, TypeError):
+                print(f"Invalid channel number: {channel_key}")
+                continue
+        
         with self.lock:
             if sender_name:
                 if sender_name in self.senders:
-                    self.senders[sender_name].set_channels(channels)
+                    self.senders[sender_name].set_channels(dmx_channels)
                 else:
                     print(f"Sender '{sender_name}' not found")
             else:
                 # Set on all active senders
                 for sender in self.senders.values():
                     if sender.active:
-                        sender.set_channels(channels)
+                        sender.set_channels(dmx_channels)
     
     def send(self, sender_name: str = None):
         """Send data on specific sender or all senders"""

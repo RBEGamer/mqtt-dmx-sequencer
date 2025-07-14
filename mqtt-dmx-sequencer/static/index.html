@@ -168,8 +168,20 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeSceneEditor()">Cancel</button>
-                <button class="btn btn-primary" onclick="saveScene()">Save Scene</button>
+                <div class="modal-footer-left">
+                    <button class="btn btn-danger" onclick="deleteSceneFromEditor()" id="scene-delete-btn" style="display: none;">
+                        <i class="fas fa-trash"></i> Delete Scene
+                    </button>
+                </div>
+                <div class="modal-footer-center">
+                    <button class="btn btn-secondary btn-autostart" onclick="toggleSceneAutostartFromEditor()" id="scene-autostart-btn">
+                        <i class="fas fa-play"></i> Set Autostart
+                    </button>
+                </div>
+                <div class="modal-footer-right">
+                    <button class="btn btn-secondary" onclick="closeSceneEditor()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveScene()">Save Scene</button>
+                </div>
             </div>
         </div>
     </div>
@@ -211,8 +223,20 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeSequenceEditor()">Cancel</button>
-                <button class="btn btn-primary" onclick="saveSequence()">Save Sequence</button>
+                <div class="modal-footer-left">
+                    <button class="btn btn-danger" onclick="deleteSequenceFromEditor()" id="sequence-delete-btn" style="display: none;">
+                        <i class="fas fa-trash"></i> Delete Sequence
+                    </button>
+                </div>
+                <div class="modal-footer-center">
+                    <button class="btn btn-secondary btn-autostart" onclick="toggleSequenceAutostartFromEditor()" id="sequence-autostart-btn">
+                        <i class="fas fa-play"></i> Set Autostart
+                    </button>
+                </div>
+                <div class="modal-footer-right">
+                    <button class="btn btn-secondary" onclick="closeSequenceEditor()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveSequence()">Save Sequence</button>
+                </div>
             </div>
         </div>
     </div>

@@ -26,6 +26,11 @@ class MQTTDMXSequencer:
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
         
+        # Autostart management
+        self.autostart_config = self.config.get('autostart', {})
+        self.current_autostart = None
+        self.autostart_timer = None
+        
         # Web server settings from config or command line
         web_config = self.config_manager.get_web_server_config()
         self.enable_web_server = enable_web_server if enable_web_server is not None else web_config.get('enabled', True)
@@ -570,6 +575,97 @@ class MQTTDMXSequencer:
                     "error": str(e)
                 }), 500
 
+        @self.flask_app.route('/api/autostart', methods=['GET'])
+        def get_autostart():
+            """Get current autostart configuration"""
+            try:
+                return jsonify({
+                    "success": True,
+                    "data": {
+                        "current": self.current_autostart,
+                        "config": self.autostart_config
+                    }
+                })
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/autostart', methods=['POST'])
+        def set_autostart():
+            """Set autostart configuration"""
+            try:
+                data = request.get_json()
+                
+                if not data or 'type' not in data or 'id' not in data:
+                    return jsonify({
+                        "success": False,
+                        "error": "Missing required fields: type and id"
+                    }), 400
+                
+                autostart_type = data['type']  # 'scene' or 'sequence'
+                autostart_id = data['id']
+                enabled = data.get('enabled', True)
+                
+                if enabled:
+                    # Disable any existing autostart
+                    self.disable_current_autostart()
+                    
+                    # Set new autostart
+                    self.autostart_config = {
+                        'type': autostart_type,
+                        'id': autostart_id,
+                        'enabled': True
+                    }
+                    self.current_autostart = autostart_id
+                    
+                    # Start the autostart
+                    self.start_autostart()
+                else:
+                    # Disable autostart
+                    self.disable_current_autostart()
+                    self.autostart_config = {}
+                    self.current_autostart = None
+                
+                # Save to config
+                self.config['autostart'] = self.autostart_config
+                self.save_config()
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Autostart {'enabled' if enabled else 'disabled'} for {autostart_type} '{autostart_id}'"
+                })
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/autostart', methods=['DELETE'])
+        def disable_autostart():
+            """Disable current autostart"""
+            try:
+                self.disable_current_autostart()
+                self.autostart_config = {}
+                self.current_autostart = None
+                
+                # Save to config
+                self.config['autostart'] = self.autostart_config
+                self.save_config()
+                
+                return jsonify({
+                    "success": True,
+                    "message": "Autostart disabled"
+                })
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
     def save_config(self):
         """Save current configuration to file"""
         try:
@@ -582,6 +678,31 @@ class MQTTDMXSequencer:
         except Exception as e:
             print(f"Error saving configuration: {e}")
             return False
+
+    def start_autostart(self):
+        """Start the current autostart"""
+        if not self.autostart_config.get('enabled'):
+            return
+        
+        autostart_type = self.autostart_config.get('type')
+        autostart_id = self.autostart_config.get('id')
+        
+        if autostart_type == 'scene' and autostart_id in self.config.get('scenes', {}):
+            print(f"Starting autostart scene: {autostart_id}")
+            self.play_scene(autostart_id)
+        elif autostart_type == 'sequence' and autostart_id in self.config.get('sequences', {}):
+            print(f"Starting autostart sequence: {autostart_id}")
+            self.play_sequence(self.config['sequences'][autostart_id])
+
+    def disable_current_autostart(self):
+        """Disable the current autostart"""
+        if self.autostart_timer:
+            self.autostart_timer.cancel()
+            self.autostart_timer = None
+        
+        if self.current_autostart:
+            print(f"Disabled autostart: {self.current_autostart}")
+            self.current_autostart = None
 
     def on_connect(self, client, userdata, flags, rc):
         print("Connected to MQTT broker.")
@@ -765,8 +886,18 @@ class MQTTDMXSequencer:
                 dmx_data = step.get('dmx', {})
                 duration = step.get('duration', default_duration)
                 
+                # Convert string keys to integers for DMX channels
+                dmx_channels = {}
+                for channel_str, value in dmx_data.items():
+                    try:
+                        channel = int(channel_str)
+                        dmx_channels[channel] = value
+                    except (ValueError, TypeError):
+                        print(f"Invalid channel number: {channel_str}")
+                        continue
+                
                 # Set channels for this step
-                self.dmx_manager.set_channels(dmx_data)
+                self.dmx_manager.set_channels(dmx_channels)
                 if auto_play:
                     self.dmx_manager.send()
                 
@@ -782,9 +913,16 @@ class MQTTDMXSequencer:
         try:
             print("MQTT DMX Sequencer started")
             print(f"Active DMX senders: {self.dmx_manager.list_senders()}")
+            
+            # Start autostart if configured
+            if self.autostart_config.get('enabled'):
+                print(f"Starting autostart: {self.autostart_config.get('type')} '{self.autostart_config.get('id')}'")
+                self.start_autostart()
+            
             self.client.loop_forever()
         except KeyboardInterrupt:
             print("Shutting down...")
+            self.disable_current_autostart()
             self.dmx_manager.stop_all()
             print("Shutdown complete.")
 

@@ -265,6 +265,32 @@ body {
     margin-bottom: 12px;
 }
 
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.autostart-indicator {
+    color: #ff4444;
+    font-size: 12px;
+    animation: pulse 2s infinite;
+}
+
+.autostart-indicator i {
+    font-size: 10px;
+}
+
+.scene-card.autostart-active, .sequence-card.autostart-active {
+    border-color: #ff4444;
+    box-shadow: 0 0 10px rgba(255, 68, 68, 0.3);
+}
+
+.scene-card.autostart-active h4, .sequence-card.autostart-active h4 {
+    color: #ff4444;
+}
+
 .card-actions {
     display: flex;
     gap: 8px;
@@ -326,6 +352,28 @@ body {
 
 .btn-success:hover {
     background: #008833;
+}
+
+.btn-autostart {
+    position: relative;
+}
+
+.btn-autostart.btn-success {
+    background: #00aa44;
+    border-color: #00cc66;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(0, 170, 68, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(0, 170, 68, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(0, 170, 68, 0);
+    }
 }
 
 /* Playback Panel */
@@ -507,8 +555,24 @@ body {
     background: #333;
     border-top: 1px solid #555;
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
     gap: 12px;
+}
+
+.modal-footer-left {
+    display: flex;
+    gap: 8px;
+}
+
+.modal-footer-center {
+    display: flex;
+    gap: 8px;
+}
+
+.modal-footer-right {
+    display: flex;
+    gap: 8px;
 }
 
 /* Editor Layout */

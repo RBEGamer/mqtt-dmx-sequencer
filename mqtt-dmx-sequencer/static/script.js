@@ -11,6 +11,7 @@ class DMXConsole {
         this.currentStep = 0;
         this.stepTimer = null;
         this.sequenceTimer = null;
+        this.autostartConfig = null;
         
         this.init();
     }
@@ -23,6 +24,7 @@ class DMXConsole {
         this.testConnection();
         this.loadScenes();
         this.loadSequences();
+        this.loadAutostartConfig();
         
         // Update time every second
         setInterval(() => this.updateTime(), 1000);
@@ -216,6 +218,177 @@ class DMXConsole {
         this.updateAllFaders();
     }
 
+    async loadAutostartConfig() {
+        try {
+            const response = await fetch(`${this.apiUrl}/autostart`);
+            if (response.ok) {
+                const data = await response.json();
+                this.autostartConfig = data.data;
+                this.updateAutostartUI();
+            }
+        } catch (error) {
+            console.error('Failed to load autostart config:', error);
+        }
+    }
+
+    async setAutostart(type, id, enabled = true) {
+        try {
+            const response = await fetch(`${this.apiUrl}/autostart`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type, id, enabled })
+            });
+            
+            if (response.ok) {
+                await this.loadAutostartConfig();
+                this.showNotification(`Autostart ${enabled ? 'enabled' : 'disabled'} for ${type}`, 'success');
+                
+                // Refresh UI to update autostart indicators
+                this.renderScenes();
+                this.renderSequences();
+            } else {
+                throw new Error('Failed to set autostart');
+            }
+        } catch (error) {
+            console.error('Failed to set autostart:', error);
+            this.showNotification('Failed to set autostart', 'error');
+        }
+    }
+
+    async disableAutostart() {
+        try {
+            const response = await fetch(`${this.apiUrl}/autostart`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                await this.loadAutostartConfig();
+                this.showNotification('Autostart disabled', 'success');
+            } else {
+                throw new Error('Failed to disable autostart');
+            }
+        } catch (error) {
+            console.error('Failed to disable autostart:', error);
+            this.showNotification('Failed to disable autostart', 'error');
+        }
+    }
+
+    updateAutostartUI() {
+        // Update scene cards
+        this.scenes.forEach(scene => {
+            const card = document.querySelector(`[data-scene-id="${scene.id}"]`);
+            if (card) {
+                const autostartBtn = card.querySelector('.btn-autostart');
+                if (autostartBtn) {
+                    const isAutostart = this.autostartConfig?.config?.type === 'scene' && 
+                                       this.autostartConfig?.config?.id === scene.id;
+                    autostartBtn.className = `btn ${isAutostart ? 'btn-success' : 'btn-secondary'} btn-autostart`;
+                    autostartBtn.innerHTML = `<i class="fas fa-${isAutostart ? 'stop' : 'play'}"></i> ${isAutostart ? 'Autostart ON' : 'Autostart'}`;
+                }
+            }
+        });
+
+        // Update sequence cards
+        this.sequences.forEach(sequence => {
+            const card = document.querySelector(`[data-sequence-id="${sequence.id}"]`);
+            if (card) {
+                const autostartBtn = card.querySelector('.btn-autostart');
+                if (autostartBtn) {
+                    const isAutostart = this.autostartConfig?.config?.type === 'sequence' && 
+                                       this.autostartConfig?.config?.id === sequence.id;
+                    autostartBtn.className = `btn ${isAutostart ? 'btn-success' : 'btn-secondary'} btn-autostart`;
+                    autostartBtn.innerHTML = `<i class="fas fa-${isAutostart ? 'stop' : 'play'}"></i> ${isAutostart ? 'Autostart ON' : 'Autostart'}`;
+                }
+            }
+        });
+    }
+
+    async toggleSceneAutostart(sceneId) {
+        const isCurrentlyAutostart = this.autostartConfig?.config?.type === 'scene' && 
+                                    this.autostartConfig?.config?.id === sceneId;
+        
+        if (isCurrentlyAutostart) {
+            await this.disableAutostart();
+        } else {
+            await this.setAutostart('scene', sceneId, true);
+        }
+        
+        // Refresh scenes to update autostart indicators
+        this.renderScenes();
+    }
+
+    async toggleSequenceAutostart(sequenceId) {
+        const isCurrentlyAutostart = this.autostartConfig?.config?.type === 'sequence' && 
+                                    this.autostartConfig?.config?.id === sequenceId;
+        
+        if (isCurrentlyAutostart) {
+            await this.disableAutostart();
+        } else {
+            await this.setAutostart('sequence', sequenceId, true);
+        }
+        
+        // Refresh sequences to update autostart indicators
+        this.renderSequences();
+    }
+
+    updateSceneAutostartButton(sceneId) {
+        const autostartBtn = document.getElementById('scene-autostart-btn');
+        const isAutostart = this.autostartConfig?.config?.type === 'scene' && 
+                           this.autostartConfig?.config?.id === sceneId;
+        
+        autostartBtn.className = `btn ${isAutostart ? 'btn-success' : 'btn-secondary'} btn-autostart`;
+        autostartBtn.innerHTML = `<i class="fas fa-${isAutostart ? 'stop' : 'play'}"></i> ${isAutostart ? 'Autostart ON' : 'Set Autostart'}`;
+    }
+
+    updateSequenceAutostartButton(sequenceId) {
+        const autostartBtn = document.getElementById('sequence-autostart-btn');
+        const isAutostart = this.autostartConfig?.config?.type === 'sequence' && 
+                           this.autostartConfig?.config?.id === sequenceId;
+        
+        autostartBtn.className = `btn ${isAutostart ? 'btn-success' : 'btn-secondary'} btn-autostart`;
+        autostartBtn.innerHTML = `<i class="fas fa-${isAutostart ? 'stop' : 'play'}"></i> ${isAutostart ? 'Autostart ON' : 'Set Autostart'}`;
+    }
+
+    async toggleSceneAutostartFromEditor() {
+        const modal = document.getElementById('scene-editor');
+        const sceneId = modal.dataset.sceneId;
+        
+        if (sceneId) {
+            await this.toggleSceneAutostart(sceneId);
+            this.updateSceneAutostartButton(sceneId);
+        }
+    }
+
+    async toggleSequenceAutostartFromEditor() {
+        const modal = document.getElementById('sequence-editor');
+        const sequenceId = modal.dataset.sequenceId;
+        
+        if (sequenceId) {
+            await this.toggleSequenceAutostart(sequenceId);
+            this.updateSequenceAutostartButton(sequenceId);
+        }
+    }
+
+    async deleteSceneFromEditor() {
+        const modal = document.getElementById('scene-editor');
+        const sceneId = modal.dataset.sceneId;
+        
+        if (sceneId) {
+            await this.deleteScene(sceneId);
+            this.closeSceneEditor();
+        }
+    }
+
+    async deleteSequenceFromEditor() {
+        const modal = document.getElementById('sequence-editor');
+        const sequenceId = modal.dataset.sequenceId;
+        
+        if (sequenceId) {
+            await this.deleteSequence(sequenceId);
+            this.closeSequenceEditor();
+        }
+    }
+
     setActiveScene(sceneId) {
         // Remove active class from all scene cards
         document.querySelectorAll('.scene-card').forEach(card => {
@@ -238,6 +411,8 @@ class DMXConsole {
         const nameInput = document.getElementById('scene-name');
         const descInput = document.getElementById('scene-description');
         const fadeInput = document.getElementById('scene-fade-time');
+        const deleteBtn = document.getElementById('scene-delete-btn');
+        const autostartBtn = document.getElementById('scene-autostart-btn');
 
         if (sceneId) {
             const scene = this.scenes.find(s => s.id === sceneId);
@@ -247,6 +422,12 @@ class DMXConsole {
                 descInput.value = scene.description || '';
                 fadeInput.value = scene.fade_time || 1000;
                 this.generateChannelEditor(scene.channels);
+                
+                // Show delete button for existing scenes
+                deleteBtn.style.display = 'block';
+                
+                // Update autostart button state
+                this.updateSceneAutostartButton(sceneId);
             }
         } else {
             title.textContent = 'New Scene';
@@ -254,6 +435,13 @@ class DMXConsole {
             descInput.value = '';
             fadeInput.value = 1000;
             this.generateChannelEditor(this.currentChannels);
+            
+            // Hide delete button for new scenes
+            deleteBtn.style.display = 'none';
+            
+            // Reset autostart button
+            autostartBtn.className = 'btn btn-secondary btn-autostart';
+            autostartBtn.innerHTML = '<i class="fas fa-play"></i> Set Autostart';
         }
 
         modal.dataset.sceneId = sceneId;
@@ -359,11 +547,20 @@ class DMXConsole {
         container.innerHTML = '';
 
         this.scenes.forEach(scene => {
+            const isAutostart = this.autostartConfig?.config?.type === 'scene' && 
+                               this.autostartConfig?.config?.id === scene.id;
+            
             const card = document.createElement('div');
             card.className = 'scene-card';
+            if (isAutostart) {
+                card.classList.add('autostart-active');
+            }
             card.dataset.sceneId = scene.id;
             card.innerHTML = `
-                <h4>${scene.name}</h4>
+                <div class="card-header">
+                    <h4>${scene.name}</h4>
+                    ${isAutostart ? '<div class="autostart-indicator" title="Autostart Enabled"><i class="fas fa-circle"></i></div>' : ''}
+                </div>
                 <p>${scene.description || 'No description'}</p>
                 <div class="card-actions">
                     <button class="btn btn-primary" onclick="console.playScene('${scene.id}')">
@@ -371,9 +568,6 @@ class DMXConsole {
                     </button>
                     <button class="btn btn-secondary" onclick="console.openSceneEditor('${scene.id}')">
                         <i class="fas fa-edit"></i> Edit
-                    </button>
-                    <button class="btn btn-danger" onclick="console.deleteScene('${scene.id}')">
-                        <i class="fas fa-trash"></i>
                     </button>
                 </div>
             `;
@@ -440,6 +634,8 @@ class DMXConsole {
         const nameInput = document.getElementById('sequence-name');
         const descInput = document.getElementById('sequence-description');
         const loopInput = document.getElementById('sequence-loop');
+        const deleteBtn = document.getElementById('sequence-delete-btn');
+        const autostartBtn = document.getElementById('sequence-autostart-btn');
 
         if (sequenceId) {
             const sequence = this.sequences.find(s => s.id === sequenceId);
@@ -449,6 +645,12 @@ class DMXConsole {
                 descInput.value = sequence.description || '';
                 loopInput.checked = sequence.loop || false;
                 this.renderSequenceSteps(sequence.steps || []);
+                
+                // Show delete button for existing sequences
+                deleteBtn.style.display = 'block';
+                
+                // Update autostart button state
+                this.updateSequenceAutostartButton(sequenceId);
             }
         } else {
             title.textContent = 'New Sequence';
@@ -456,6 +658,13 @@ class DMXConsole {
             descInput.value = '';
             loopInput.checked = false;
             this.renderSequenceSteps([]);
+            
+            // Hide delete button for new sequences
+            deleteBtn.style.display = 'none';
+            
+            // Reset autostart button
+            autostartBtn.className = 'btn btn-secondary btn-autostart';
+            autostartBtn.innerHTML = '<i class="fas fa-play"></i> Set Autostart';
         }
 
         modal.dataset.sequenceId = sequenceId;
@@ -670,10 +879,20 @@ class DMXConsole {
         container.innerHTML = '';
 
         this.sequences.forEach(sequence => {
+            const isAutostart = this.autostartConfig?.config?.type === 'sequence' && 
+                               this.autostartConfig?.config?.id === sequence.id;
+            
             const card = document.createElement('div');
             card.className = 'sequence-card';
+            if (isAutostart) {
+                card.classList.add('autostart-active');
+            }
+            card.dataset.sequenceId = sequence.id;
             card.innerHTML = `
-                <h4>${sequence.name}</h4>
+                <div class="card-header">
+                    <h4>${sequence.name}</h4>
+                    ${isAutostart ? '<div class="autostart-indicator" title="Autostart Enabled"><i class="fas fa-circle"></i></div>' : ''}
+                </div>
                 <p>${sequence.description || 'No description'}</p>
                 <div class="card-actions">
                     <button class="btn btn-primary" onclick="console.playSequence('${sequence.id}')">
@@ -681,9 +900,6 @@ class DMXConsole {
                     </button>
                     <button class="btn btn-secondary" onclick="console.openSequenceEditor('${sequence.id}')">
                         <i class="fas fa-edit"></i> Edit
-                    </button>
-                    <button class="btn btn-danger" onclick="console.deleteSequence('${sequence.id}')">
-                        <i class="fas fa-trash"></i>
                     </button>
                 </div>
             `;
@@ -804,4 +1020,10 @@ function saveStep() { console.saveStep(); }
 function removeStep(index) { console.removeStep(index); }
 function playSequence(id) { console.playSequence(id); }
 function pauseSequence() { console.pauseSequence(); }
-function stopSequence() { console.stopSequence(); } 
+function stopSequence() { console.stopSequence(); }
+function toggleSceneAutostart(id) { console.toggleSceneAutostart(id); }
+function toggleSequenceAutostart(id) { console.toggleSequenceAutostart(id); }
+function toggleSceneAutostartFromEditor() { console.toggleSceneAutostartFromEditor(); }
+function toggleSequenceAutostartFromEditor() { console.toggleSequenceAutostartFromEditor(); }
+function deleteSceneFromEditor() { console.deleteSceneFromEditor(); }
+function deleteSequenceFromEditor() { console.deleteSequenceFromEditor(); } 
