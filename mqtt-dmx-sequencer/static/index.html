@@ -95,11 +95,8 @@
                 
                 <div class="playback-controls">
                     <div class="transport-controls">
-                        <button class="btn-large" onclick="playSequence()" title="Play">
+                        <button class="btn-large" onclick="togglePlayback()" title="Play/Pause" id="play-pause-btn">
                             <i class="fas fa-play"></i>
-                        </button>
-                        <button class="btn-large" onclick="pauseSequence()" title="Pause">
-                            <i class="fas fa-pause"></i>
                         </button>
                         <button class="btn-large" onclick="stopSequence()" title="Stop">
                             <i class="fas fa-stop"></i>
@@ -109,15 +106,15 @@
                     <div class="sequence-info">
                         <div class="info-item">
                             <label>Current:</label>
-                            <span id="current-sequence">None</span>
+                            <span id="current-playback">None</span>
                         </div>
                         <div class="info-item">
-                            <label>Step:</label>
-                            <span id="current-step">0/0</span>
+                            <label>Type:</label>
+                            <span id="playback-type">None</span>
                         </div>
                         <div class="info-item">
-                            <label>Time:</label>
-                            <span id="sequence-time">00:00</span>
+                            <label>Status:</label>
+                            <span id="playback-status">Stopped</span>
                         </div>
                     </div>
                 </div>

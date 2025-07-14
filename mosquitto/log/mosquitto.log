@@ -372,3 +372,16 @@
 1752519748: Sending PINGRESP to mqtt-dmx-sequencer
 1752519808: Received PINGREQ from mqtt-dmx-sequencer
 1752519808: Sending PINGRESP to mqtt-dmx-sequencer
+1752519869: Received PINGREQ from mqtt-dmx-sequencer
+1752519869: Sending PINGRESP to mqtt-dmx-sequencer
+1752519929: Received PINGREQ from mqtt-dmx-sequencer
+1752519929: Sending PINGRESP to mqtt-dmx-sequencer
+1752519989: Received PINGREQ from mqtt-dmx-sequencer
+1752519989: Sending PINGRESP to mqtt-dmx-sequencer
+1752520050: Received PINGREQ from mqtt-dmx-sequencer
+1752520050: Sending PINGRESP to mqtt-dmx-sequencer
+1752520061: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1752520111: Received PINGREQ from mqtt-dmx-sequencer
+1752520111: Sending PINGRESP to mqtt-dmx-sequencer
+1752520172: Received PINGREQ from mqtt-dmx-sequencer
+1752520172: Sending PINGRESP to mqtt-dmx-sequencer

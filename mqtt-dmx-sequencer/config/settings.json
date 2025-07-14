@@ -9,13 +9,12 @@
     "clean_session": true
   },
   "dmx": {
+    "test_mode": true,
     "default_configs": [
       {
-        "type": "e131",
+        "type": "test",
         "name": "main",
-        "target": "255.255.255.255",
-        "universe": 1,
-        "fps": 40
+        "universe": 1
       }
     ],
     "artnet": {

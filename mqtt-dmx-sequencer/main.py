@@ -5,7 +5,7 @@ import time
 import threading
 import paho.mqtt.client as mqtt
 import os
-from dmx_senders import DMXManager, ArtNetSender, E131Sender
+from dmx_senders import DMXManager, ArtNetSender, E131Sender, TestSender
 from config_manager import ConfigManager
 
 # Flask imports for web server
@@ -113,12 +113,31 @@ class MQTTDMXSequencer:
                 protocol_config = self.config_manager.get_dmx_protocol_config('e131')
                 fps = config.get('fps', protocol_config.get('default_fps', 40))
                 sender = E131Sender(target_ip=target_ip, universe_id=universe, fps=fps)
+            elif sender_type.lower() == 'test':
+                sender = TestSender(universe_id=universe)
             else:
                 print(f"Unknown DMX sender type: {sender_type}")
                 continue
             
+            # Try to add the sender, fall back to test mode if it fails
+            sender_added = False
             if self.dmx_manager.add_sender(name, sender):
                 print(f"Added DMX sender: {name} ({sender_type})")
+                sender_added = True
+            else:
+                print(f"Failed to add {sender_type} sender, falling back to test mode")
+                test_sender = TestSender(universe_id=universe)
+                test_name = f"test_{name}"
+                if self.dmx_manager.add_sender(test_name, test_sender):
+                    print(f"Added test DMX sender: {test_name}")
+                    sender_added = True
+        
+        # If no senders were added, add a default test sender
+        if not self.dmx_manager.list_senders():
+            print("No DMX senders configured, adding default test sender")
+            test_sender = TestSender(universe_id=1)
+            if self.dmx_manager.add_sender("default_test", test_sender):
+                print("Added default test DMX sender")
 
     def setup_web_server(self):
         """Setup Flask web server"""
@@ -340,12 +359,25 @@ class MQTTDMXSequencer:
                 sequences = self.config.get('sequences', {})
                 # Convert to list format for frontend
                 sequences_list = []
-                for name, steps in sequences.items():
+                for name, sequence_data in sequences.items():
+                    # Handle both old format (just steps) and new format (with metadata)
+                    if isinstance(sequence_data, list):
+                        # Old format - just steps array
+                        steps = sequence_data
+                        description = f"Sequence with {len(steps)} steps"
+                        loop = False
+                    else:
+                        # New format - with metadata
+                        steps = sequence_data.get('steps', [])
+                        description = sequence_data.get('description', f"Sequence with {len(steps)} steps")
+                        loop = sequence_data.get('loop', False)
+                    
                     sequences_list.append({
                         'id': name,
                         'name': name,
                         'steps': steps,
-                        'description': f"Sequence with {len(steps)} steps"
+                        'description': description,
+                        'loop': loop
                     })
                 return jsonify(sequences_list)
             except Exception as e:
@@ -368,6 +400,8 @@ class MQTTDMXSequencer:
                 
                 sequence_name = data['name']
                 steps = data['steps']
+                description = data.get('description', '')
+                loop = data.get('loop', False)
                 
                 # Validate steps
                 if not isinstance(steps, list):
@@ -376,7 +410,12 @@ class MQTTDMXSequencer:
                         "error": "Steps must be a list"
                     }), 400
                 
-                self.config['sequences'][sequence_name] = steps
+                # Store sequence with metadata
+                self.config['sequences'][sequence_name] = {
+                    'steps': steps,
+                    'description': description,
+                    'loop': loop
+                }
                 self.save_config()
                 
                 return jsonify({
@@ -403,6 +442,8 @@ class MQTTDMXSequencer:
                     }), 400
                 
                 steps = data['steps']
+                description = data.get('description', '')
+                loop = data.get('loop', False)
                 
                 # Validate steps
                 if not isinstance(steps, list):
@@ -417,7 +458,12 @@ class MQTTDMXSequencer:
                         "error": f"Sequence '{sequence_id}' not found"
                     }), 404
                 
-                self.config['sequences'][sequence_id] = steps
+                # Update sequence with metadata
+                self.config['sequences'][sequence_id] = {
+                    'steps': steps,
+                    'description': description,
+                    'loop': loop
+                }
                 self.save_config()
                 
                 return jsonify({
@@ -465,7 +511,19 @@ class MQTTDMXSequencer:
                         "error": f"Sequence '{sequence_id}' not found"
                     }), 404
                 
-                self.play_sequence(self.config['sequences'][sequence_id])
+                sequence_data = self.config['sequences'][sequence_id]
+                
+                # Handle both old format (just steps) and new format (with metadata)
+                if isinstance(sequence_data, list):
+                    # Old format - just steps array
+                    steps = sequence_data
+                    loop = False
+                else:
+                    # New format - with metadata
+                    steps = sequence_data.get('steps', [])
+                    loop = sequence_data.get('loop', False)
+                
+                self.play_sequence(steps, loop)
                 
                 return jsonify({
                     "success": True,
@@ -875,34 +933,65 @@ class MQTTDMXSequencer:
             
         threading.Thread(target=run).start()
 
-    def play_sequence(self, sequence):
-        """Play a sequence"""
+    def play_sequence(self, sequence, loop=False):
+        """Play a sequence with optional looping"""
         sequences_config = self.config_manager.get_sequences_config()
         default_duration = sequences_config.get('default_duration', 1.0)
         auto_play = sequences_config.get('auto_play', True)
         
+        print(f"Starting sequence playback - Steps: {len(sequence)}, Loop: {loop}, Auto play: {auto_play}")
+        print(f"Active DMX senders: {self.dmx_manager.list_senders()}")
+        
         def run():
-            for step in sequence:
-                dmx_data = step.get('dmx', {})
-                duration = step.get('duration', default_duration)
+            while True:  # Loop indefinitely if loop=True
+                for step_index, step in enumerate(sequence):
+                    print(f"Playing step {step_index + 1}/{len(sequence)}")
+                    
+                    # Check if this is a scene-based step or direct DMX step
+                    if 'scene_id' in step or 'scene_name' in step:
+                        # This is a scene-based step - play the scene
+                        scene_name = step.get('scene_name') or step.get('scene_id')
+                        duration = step.get('duration', default_duration)
+                        if isinstance(duration, int):
+                            duration = duration / 1000.0  # Convert ms to seconds
+                        
+                        print(f"Playing scene: {scene_name} for {duration}s")
+                        if scene_name in self.config.get('scenes', {}):
+                            self.play_scene(scene_name)
+                        else:
+                            print(f"Scene '{scene_name}' not found")
+                        
+                        # Wait for duration
+                        time.sleep(duration)
+                    else:
+                        # This is a direct DMX step
+                        dmx_data = step.get('dmx', {})
+                        duration = step.get('duration', default_duration)
+                        
+                        print(f"Setting DMX data for {duration}s")
+                        
+                        # Convert string keys to integers for DMX channels
+                        dmx_channels = {}
+                        for channel_str, value in dmx_data.items():
+                            try:
+                                channel = int(channel_str)
+                                dmx_channels[channel] = value
+                            except (ValueError, TypeError):
+                                print(f"Invalid channel number: {channel_str}")
+                                continue
+                        
+                        # Set channels for this step
+                        self.dmx_manager.set_channels(dmx_channels)
+                        if auto_play:
+                            self.dmx_manager.send()
+                        
+                        # Wait for duration
+                        time.sleep(duration)
                 
-                # Convert string keys to integers for DMX channels
-                dmx_channels = {}
-                for channel_str, value in dmx_data.items():
-                    try:
-                        channel = int(channel_str)
-                        dmx_channels[channel] = value
-                    except (ValueError, TypeError):
-                        print(f"Invalid channel number: {channel_str}")
-                        continue
-                
-                # Set channels for this step
-                self.dmx_manager.set_channels(dmx_channels)
-                if auto_play:
-                    self.dmx_manager.send()
-                
-                # Wait for duration
-                time.sleep(duration)
+                if not loop:
+                    break  # Exit loop if not set to loop
+                else:
+                    print("Sequence loop completed, restarting...")
             
             print("Sequence finished.")
         

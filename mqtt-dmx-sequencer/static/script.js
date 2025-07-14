@@ -7,6 +7,7 @@ class DMXConsole {
         this.scenes = [];
         this.sequences = [];
         this.currentSequence = null;
+        this.currentScene = null;
         this.isPlaying = false;
         this.currentStep = 0;
         this.stepTimer = null;
@@ -590,6 +591,11 @@ class DMXConsole {
             });
             
             if (response.ok) {
+                // Set current scene and update playback state
+                this.currentScene = sceneId;
+                this.currentSequence = null;
+                this.isPlaying = true;
+                
                 // Update current channels with scene values
                 if (scene.channels && Array.isArray(scene.channels)) {
                     // Update the currentChannels array with scene values
@@ -601,6 +607,7 @@ class DMXConsole {
                     this.updateAllFaders();
                 }
                 
+                this.updatePlaybackInfo();
                 this.showNotification(`Scene "${scene.name}" played successfully`, 'success');
             } else {
                 throw new Error('Failed to play scene');
@@ -914,6 +921,7 @@ class DMXConsole {
             });
             if (response.ok) {
                 this.currentSequence = sequenceId;
+                this.currentScene = null;
                 this.isPlaying = true;
                 this.updatePlaybackInfo();
                 this.showNotification('Sequence started', 'success');
@@ -929,12 +937,13 @@ class DMXConsole {
             clearTimeout(this.stepTimer);
         }
         this.updatePlaybackInfo();
-        this.showNotification('Sequence paused', 'warning');
+        this.showNotification('Playback paused', 'warning');
     }
 
     stopSequence() {
         this.isPlaying = false;
         this.currentSequence = null;
+        this.currentScene = null;
         this.currentStep = 0;
         if (this.stepTimer) {
             clearTimeout(this.stepTimer);
@@ -943,13 +952,58 @@ class DMXConsole {
             clearInterval(this.sequenceTimer);
         }
         this.updatePlaybackInfo();
-        this.showNotification('Sequence stopped', 'warning');
+        this.showNotification('Playback stopped', 'warning');
     }
 
     updatePlaybackInfo() {
-        document.getElementById('current-sequence').textContent = 
-            this.currentSequence ? this.sequences.find(s => s.id === this.currentSequence)?.name || 'Unknown' : 'None';
-        document.getElementById('current-step').textContent = `${this.currentStep}/${this.sequences.find(s => s.id === this.currentSequence)?.steps?.length || 0}`;
+        const currentPlaybackElement = document.getElementById('current-playback');
+        const playbackTypeElement = document.getElementById('playback-type');
+        const playbackStatusElement = document.getElementById('playback-status');
+        const playPauseBtn = document.getElementById('play-pause-btn');
+        
+        if (this.currentScene) {
+            const scene = this.scenes.find(s => s.id === this.currentScene);
+            currentPlaybackElement.textContent = scene ? scene.name : 'Unknown Scene';
+            playbackTypeElement.textContent = 'Scene';
+        } else if (this.currentSequence) {
+            const sequence = this.sequences.find(s => s.id === this.currentSequence);
+            currentPlaybackElement.textContent = sequence ? sequence.name : 'Unknown Sequence';
+            playbackTypeElement.textContent = 'Sequence';
+        } else {
+            currentPlaybackElement.textContent = 'None';
+            playbackTypeElement.textContent = 'None';
+        }
+        
+        playbackStatusElement.textContent = this.isPlaying ? 'Playing' : 'Stopped';
+        
+        // Update play/pause button
+        if (playPauseBtn) {
+            const icon = playPauseBtn.querySelector('i');
+            if (this.isPlaying) {
+                icon.className = 'fas fa-pause';
+                playPauseBtn.title = 'Pause';
+            } else {
+                icon.className = 'fas fa-play';
+                playPauseBtn.title = 'Play';
+            }
+        }
+    }
+
+    togglePlayback() {
+        if (!this.currentScene && !this.currentSequence) {
+            this.showNotification('No scene or sequence to play', 'warning');
+            return;
+        }
+        
+        if (this.isPlaying) {
+            this.pauseSequence(); // This function now handles both scenes and sequences
+        } else {
+            if (this.currentScene) {
+                this.playScene(this.currentScene);
+            } else if (this.currentSequence) {
+                this.playSequence(this.currentSequence);
+            }
+        }
     }
 
     async deleteSequence(sequenceId) {
@@ -1021,6 +1075,7 @@ function removeStep(index) { console.removeStep(index); }
 function playSequence(id) { console.playSequence(id); }
 function pauseSequence() { console.pauseSequence(); }
 function stopSequence() { console.stopSequence(); }
+function togglePlayback() { console.togglePlayback(); }
 function toggleSceneAutostart(id) { console.toggleSceneAutostart(id); }
 function toggleSequenceAutostart(id) { console.toggleSequenceAutostart(id); }
 function toggleSceneAutostartFromEditor() { console.toggleSceneAutostartFromEditor(); }
