@@ -8,9 +8,17 @@ import os
 from dmx_senders import DMXManager, ArtNetSender, E131Sender
 from config_manager import ConfigManager
 
+# Flask imports for web server
+try:
+    from flask import Flask, request, jsonify, send_from_directory
+    FLASK_AVAILABLE = True
+except ImportError:
+    FLASK_AVAILABLE = False
+    print("Warning: Flask not available. Web server functionality will be disabled.")
+
 
 class MQTTDMXSequencer:
-    def __init__(self, config_path, settings_path=None):
+    def __init__(self, config_path, settings_path=None, enable_web_server=False, web_port=5000):
         self.config_manager = ConfigManager(settings_path)
         self.config = self.load_config(config_path)
         self.dmx_manager = DMXManager()
@@ -18,11 +26,21 @@ class MQTTDMXSequencer:
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
         
+        # Web server settings
+        self.enable_web_server = enable_web_server and FLASK_AVAILABLE
+        self.web_port = web_port
+        self.flask_app = None
+        self.web_thread = None
+        
         # Setup DMX senders from configuration
         self.setup_dmx_senders()
         
         # Connect to MQTT
         self.connect_mqtt()
+        
+        # Setup web server if enabled
+        if self.enable_web_server:
+            self.setup_web_server()
 
     def load_config(self, path):
         with open(path, 'r') as f:
@@ -90,6 +108,457 @@ class MQTTDMXSequencer:
             
             if self.dmx_manager.add_sender(name, sender):
                 print(f"Added DMX sender: {name} ({sender_type})")
+
+    def setup_web_server(self):
+        """Setup Flask web server"""
+        if not FLASK_AVAILABLE:
+            print("Flask not available, web server disabled")
+            return
+            
+        self.flask_app = Flask(__name__, static_folder='static')
+        self.setup_flask_routes()
+        
+        def run_flask():
+            self.flask_app.run(host='0.0.0.0', port=self.web_port, debug=False, use_reloader=False)
+        
+        self.web_thread = threading.Thread(target=run_flask, daemon=True)
+        self.web_thread.start()
+        print(f"Web server started on http://localhost:{self.web_port}")
+
+    def setup_flask_routes(self):
+        """Setup Flask routes for the web API"""
+        
+        @self.flask_app.route('/')
+        def index():
+            """Serve the main web interface"""
+            return send_from_directory('static', 'index.html')
+
+        @self.flask_app.route('/<path:filename>')
+        def static_files(filename):
+            """Serve static files"""
+            return send_from_directory('static', filename)
+
+        @self.flask_app.route('/api/health', methods=['GET'])
+        def health_check():
+            """Health check endpoint"""
+            return jsonify({
+                "status": "healthy",
+                "service": "mqtt-dmx-sequencer-api",
+                "version": "1.0.0"
+            })
+
+        @self.flask_app.route('/api/config', methods=['GET'])
+        def get_config():
+            """Get current configuration"""
+            try:
+                return jsonify({
+                    "success": True,
+                    "data": self.config
+                })
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/scenes', methods=['GET'])
+        def get_scenes():
+            """Get all scenes"""
+            try:
+                scenes = self.config.get('scenes', {})
+                # Convert to list format for frontend
+                scenes_list = []
+                for name, channels in scenes.items():
+                    scenes_list.append({
+                        'id': name,
+                        'name': name,
+                        'channels': channels,
+                        'description': f"Scene with {len([c for c in channels if c > 0])} active channels"
+                    })
+                return jsonify(scenes_list)
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/scenes', methods=['POST'])
+        def create_scene():
+            """Create a new scene"""
+            try:
+                data = request.get_json()
+                
+                if not data or 'name' not in data or 'channels' not in data:
+                    return jsonify({
+                        "success": False,
+                        "error": "Missing required fields: name and channels"
+                    }), 400
+                
+                scene_name = data['name']
+                channels = data['channels']
+                
+                # Validate channels
+                if not isinstance(channels, list):
+                    return jsonify({
+                        "success": False,
+                        "error": "Channels must be a list"
+                    }), 400
+                
+                # Validate channel values
+                for i, value in enumerate(channels):
+                    if value is not None and (not isinstance(value, int) or value < 0 or value > 255):
+                        return jsonify({
+                            "success": False,
+                            "error": f"Channel {i+1} value must be null or 0-255, got {value}"
+                        }), 400
+                
+                self.config['scenes'][scene_name] = channels
+                self.save_config()
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Scene '{scene_name}' created successfully"
+                }), 201
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/scenes/<scene_id>', methods=['PUT'])
+        def update_scene(scene_id):
+            """Update an existing scene"""
+            try:
+                data = request.get_json()
+                
+                if not data or 'channels' not in data:
+                    return jsonify({
+                        "success": False,
+                        "error": "Missing required field: channels"
+                    }), 400
+                
+                channels = data['channels']
+                
+                # Validate channels
+                if not isinstance(channels, list):
+                    return jsonify({
+                        "success": False,
+                        "error": "Channels must be a list"
+                    }), 400
+                
+                # Validate channel values
+                for i, value in enumerate(channels):
+                    if value is not None and (not isinstance(value, int) or value < 0 or value > 255):
+                        return jsonify({
+                            "success": False,
+                            "error": f"Channel {i+1} value must be null or 0-255, got {value}"
+                        }), 400
+                
+                if scene_id not in self.config.get('scenes', {}):
+                    return jsonify({
+                        "success": False,
+                        "error": f"Scene '{scene_id}' not found"
+                    }), 404
+                
+                self.config['scenes'][scene_id] = channels
+                self.save_config()
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Scene '{scene_id}' updated successfully"
+                })
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/scenes/<scene_id>', methods=['DELETE'])
+        def delete_scene(scene_id):
+            """Delete a scene"""
+            try:
+                if scene_id not in self.config.get('scenes', {}):
+                    return jsonify({
+                        "success": False,
+                        "error": f"Scene '{scene_id}' not found"
+                    }), 404
+                
+                del self.config['scenes'][scene_id]
+                self.save_config()
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Scene '{scene_id}' deleted successfully"
+                })
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/scenes/<scene_id>/play', methods=['POST'])
+        def play_scene_api(scene_id):
+            """Play a scene via API"""
+            try:
+                if scene_id not in self.config.get('scenes', {}):
+                    return jsonify({
+                        "success": False,
+                        "error": f"Scene '{scene_id}' not found"
+                    }), 404
+                
+                self.play_scene(scene_id)
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Scene '{scene_id}' triggered"
+                })
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/sequences', methods=['GET'])
+        def get_sequences():
+            """Get all sequences"""
+            try:
+                sequences = self.config.get('sequences', {})
+                # Convert to list format for frontend
+                sequences_list = []
+                for name, steps in sequences.items():
+                    sequences_list.append({
+                        'id': name,
+                        'name': name,
+                        'steps': steps,
+                        'description': f"Sequence with {len(steps)} steps"
+                    })
+                return jsonify(sequences_list)
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/sequences', methods=['POST'])
+        def create_sequence():
+            """Create a new sequence"""
+            try:
+                data = request.get_json()
+                
+                if not data or 'name' not in data or 'steps' not in data:
+                    return jsonify({
+                        "success": False,
+                        "error": "Missing required fields: name and steps"
+                    }), 400
+                
+                sequence_name = data['name']
+                steps = data['steps']
+                
+                # Validate steps
+                if not isinstance(steps, list):
+                    return jsonify({
+                        "success": False,
+                        "error": "Steps must be a list"
+                    }), 400
+                
+                self.config['sequences'][sequence_name] = steps
+                self.save_config()
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Sequence '{sequence_name}' created successfully"
+                }), 201
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/sequences/<sequence_id>', methods=['PUT'])
+        def update_sequence(sequence_id):
+            """Update an existing sequence"""
+            try:
+                data = request.get_json()
+                
+                if not data or 'steps' not in data:
+                    return jsonify({
+                        "success": False,
+                        "error": "Missing required field: steps"
+                    }), 400
+                
+                steps = data['steps']
+                
+                # Validate steps
+                if not isinstance(steps, list):
+                    return jsonify({
+                        "success": False,
+                        "error": "Steps must be a list"
+                    }), 400
+                
+                if sequence_id not in self.config.get('sequences', {}):
+                    return jsonify({
+                        "success": False,
+                        "error": f"Sequence '{sequence_id}' not found"
+                    }), 404
+                
+                self.config['sequences'][sequence_id] = steps
+                self.save_config()
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Sequence '{sequence_id}' updated successfully"
+                })
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/sequences/<sequence_id>', methods=['DELETE'])
+        def delete_sequence(sequence_id):
+            """Delete a sequence"""
+            try:
+                if sequence_id not in self.config.get('sequences', {}):
+                    return jsonify({
+                        "success": False,
+                        "error": f"Sequence '{sequence_id}' not found"
+                    }), 404
+                
+                del self.config['sequences'][sequence_id]
+                self.save_config()
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Sequence '{sequence_id}' deleted successfully"
+                })
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/sequences/<sequence_id>/play', methods=['POST'])
+        def play_sequence_api(sequence_id):
+            """Play a sequence via API"""
+            try:
+                if sequence_id not in self.config.get('sequences', {}):
+                    return jsonify({
+                        "success": False,
+                        "error": f"Sequence '{sequence_id}' not found"
+                    }), 404
+                
+                self.play_sequence(self.config['sequences'][sequence_id])
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Sequence '{sequence_id}' triggered"
+                })
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/dmx/channel/<int:channel>', methods=['POST'])
+        def set_channel(channel):
+            """Set a single DMX channel"""
+            try:
+                data = request.get_json()
+                
+                if not data or 'value' not in data:
+                    return jsonify({
+                        "success": False,
+                        "error": "Missing required field: value"
+                    }), 400
+                
+                value = data['value']
+                
+                # Validate channel and value
+                if not isinstance(channel, int) or channel < 1 or channel > 512:
+                    return jsonify({
+                        "success": False,
+                        "error": "Channel must be 1-512"
+                    }), 400
+                
+                if not isinstance(value, int) or value < 0 or value > 255:
+                    return jsonify({
+                        "success": False,
+                        "error": "Value must be 0-255"
+                    }), 400
+                
+                self.dmx_manager.set_channel(channel, value)
+                self.dmx_manager.send()
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Channel {channel} set to {value}"
+                })
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/dmx/all', methods=['POST'])
+        def set_all_channels():
+            """Set all DMX channels"""
+            try:
+                data = request.get_json()
+                
+                if not data or 'channels' not in data:
+                    return jsonify({
+                        "success": False,
+                        "error": "Missing required field: channels"
+                    }), 400
+                
+                channels = data['channels']
+                
+                # Validate channels
+                if not isinstance(channels, list):
+                    return jsonify({
+                        "success": False,
+                        "error": "Channels must be a list"
+                    }), 400
+                
+                # Set all channels
+                for i, value in enumerate(channels):
+                    if 0 <= value <= 255:
+                        self.dmx_manager.set_channel(i + 1, value)
+                
+                self.dmx_manager.send()
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Set {len(channels)} channels"
+                })
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+    def save_config(self):
+        """Save current configuration to file"""
+        try:
+            config_dir = os.path.dirname(os.path.abspath(__file__))
+            config_path = os.path.join(config_dir, 'config.json')
+            
+            with open(config_path, 'w') as f:
+                json.dump(self.config, f, indent=2)
+            return True
+        except Exception as e:
+            print(f"Error saving configuration: {e}")
+            return False
 
     def on_connect(self, client, userdata, flags, rc):
         print("Connected to MQTT broker.")
@@ -306,6 +775,8 @@ if __name__ == '__main__':
     parser.add_argument('--config-dir', help='Directory containing settings.json and config.json files', default=project_root)
     parser.add_argument('--show-config', action='store_true', help='Show current configuration and exit')
     parser.add_argument('--print-config', action='store_true', help='Print full configuration details on startup')
+    parser.add_argument('--enable-web-server', action='store_true', help='Enable the Flask web server')
+    parser.add_argument('--web-port', type=int, default=5000, help='Port for the Flask web server')
     
     args = parser.parse_args()
     
@@ -324,6 +795,8 @@ if __name__ == '__main__':
     # Create and run sequencer
     sequencer = MQTTDMXSequencer(
         config_path=config_path,
-        settings_path=settings_path
+        settings_path=settings_path,
+        enable_web_server=args.enable_web_server,
+        web_port=args.web_port
     )
     sequencer.run()

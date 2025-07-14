@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT DMX Sequencer - Professional Console</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="console-container">
+        <!-- Top Status Bar -->
+        <div class="status-bar">
+            <div class="status-left">
+                <span class="console-title">MQTT DMX Sequencer</span>
+                <span class="connection-status" id="connection-status">
+                    <i class="fas fa-circle"></i> Offline
+                </span>
+            </div>
+            <div class="status-right">
+                <span class="current-time" id="current-time"></span>
+                <span class="dmx-universe">Universe: 1</span>
+            </div>
+        </div>
+
+        <!-- Main Console Layout -->
+        <div class="console-main">
+            <!-- Left Panel - DMX Faders -->
+            <div class="fader-panel">
+                <div class="panel-header">
+                    <h3><i class="fas fa-sliders-h"></i> DMX Faders</h3>
+                    <div class="fader-controls">
+                        <button class="btn-small" onclick="blackout()" title="Blackout">
+                            <i class="fas fa-power-off"></i>
+                        </button>
+                        <button class="btn-small" onclick="setAllChannels(128)" title="50%">
+                            <i class="fas fa-adjust"></i>
+                        </button>
+                        <button class="btn-small" onclick="setAllChannels(255)" title="Full">
+                            <i class="fas fa-sun"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="fader-container" id="fader-container">
+                    <!-- DMX faders will be generated here -->
+                </div>
+            </div>
+
+            <!-- Center Panel - Scenes and Sequences -->
+            <div class="center-panel">
+                <div class="panel-tabs">
+                    <button class="panel-tab active" data-panel="scenes">
+                        <i class="fas fa-palette"></i> Scenes
+                    </button>
+                    <button class="panel-tab" data-panel="sequences">
+                        <i class="fas fa-play-circle"></i> Sequences
+                    </button>
+                </div>
+
+                <!-- Scenes Panel -->
+                <div id="scenes-panel" class="panel-content active">
+                    <div class="panel-header">
+                        <h3>Scenes</h3>
+                        <button class="btn btn-primary" onclick="openSceneEditor()">
+                            <i class="fas fa-plus"></i> New Scene
+                        </button>
+                    </div>
+                    
+                    <div class="scenes-grid" id="scenes-grid">
+                        <!-- Scenes will be loaded here -->
+                    </div>
+                </div>
+
+                <!-- Sequences Panel -->
+                <div id="sequences-panel" class="panel-content">
+                    <div class="panel-header">
+                        <h3>Sequences</h3>
+                        <button class="btn btn-primary" onclick="openSequenceEditor()">
+                            <i class="fas fa-plus"></i> New Sequence
+                        </button>
+                    </div>
+                    
+                    <div class="sequences-grid" id="sequences-grid">
+                        <!-- Sequences will be loaded here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel - Playback and Settings -->
+            <div class="playback-panel">
+                <div class="panel-header">
+                    <h3><i class="fas fa-play"></i> Playback</h3>
+                </div>
+                
+                <div class="playback-controls">
+                    <div class="transport-controls">
+                        <button class="btn-large" onclick="playSequence()" title="Play">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button class="btn-large" onclick="pauseSequence()" title="Pause">
+                            <i class="fas fa-pause"></i>
+                        </button>
+                        <button class="btn-large" onclick="stopSequence()" title="Stop">
+                            <i class="fas fa-stop"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="sequence-info">
+                        <div class="info-item">
+                            <label>Current:</label>
+                            <span id="current-sequence">None</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Step:</label>
+                            <span id="current-step">0/0</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Time:</label>
+                            <span id="sequence-time">00:00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h4>Settings</h4>
+                    <div class="setting-item">
+                        <label for="channel-count">Channels:</label>
+                        <input type="number" id="channel-count" value="24" min="1" max="512" />
+                    </div>
+                    <button class="btn btn-secondary" onclick="testConnection()">
+                        <i class="fas fa-wifi"></i> Test
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scene Editor Modal -->
+    <div id="scene-editor" class="modal">
+        <div class="modal-content large">
+            <div class="modal-header">
+                <h3 id="scene-editor-title">Scene Editor</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="editor-layout">
+                    <div class="editor-left">
+                        <div class="form-group">
+                            <label for="scene-name">Scene Name:</label>
+                            <input type="text" id="scene-name" placeholder="Enter scene name" />
+                        </div>
+                        <div class="form-group">
+                            <label for="scene-description">Description:</label>
+                            <textarea id="scene-description" placeholder="Scene description"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="scene-fade-time">Fade Time (ms):</label>
+                            <input type="number" id="scene-fade-time" value="1000" min="0" max="30000" />
+                        </div>
+                    </div>
+                    <div class="editor-right">
+                        <h4>Channel Values</h4>
+                        <div class="channel-editor" id="channel-editor">
+                            <!-- Channel sliders will be generated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeSceneEditor()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveScene()">Save Scene</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sequence Editor Modal -->
+    <div id="sequence-editor" class="modal">
+        <div class="modal-content large">
+            <div class="modal-header">
+                <h3 id="sequence-editor-title">Sequence Editor</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="editor-layout">
+                    <div class="editor-left">
+                        <div class="form-group">
+                            <label for="sequence-name">Sequence Name:</label>
+                            <input type="text" id="sequence-name" placeholder="Enter sequence name" />
+                        </div>
+                        <div class="form-group">
+                            <label for="sequence-description">Description:</label>
+                            <textarea id="sequence-description" placeholder="Sequence description"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="sequence-loop">Loop:</label>
+                            <input type="checkbox" id="sequence-loop" />
+                        </div>
+                    </div>
+                    <div class="editor-right">
+                        <div class="sequence-steps-header">
+                            <h4>Steps</h4>
+                            <button class="btn btn-secondary" onclick="addSequenceStep()">
+                                <i class="fas fa-plus"></i> Add Step
+                            </button>
+                        </div>
+                        <div class="sequence-steps" id="sequence-steps">
+                            <!-- Sequence steps will be managed here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeSequenceEditor()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveSequence()">Save Sequence</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step Editor Modal -->
+    <div id="step-editor" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Step Editor</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="step-scene">Scene:</label>
+                    <select id="step-scene">
+                        <!-- Available scenes will be loaded here -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="step-duration">Duration (ms):</label>
+                    <input type="number" id="step-duration" value="1000" min="100" max="30000" />
+                </div>
+                <div class="form-group">
+                    <label for="step-fade">Fade Time (ms):</label>
+                    <input type="number" id="step-fade" value="500" min="0" max="10000" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeStepEditor()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveStep()">Save Step</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification -->
+    <div id="notification" class="notification"></div>
+
+    <script src="script.js"></script>
+</body>
+</html> 
