@@ -215,6 +215,12 @@ class MQTTDMXSequencer:
             if action == "show":
                 self.config_manager.print_current_config()
             
+            elif action == "show-full":
+                self.config_manager.print_full_config()
+            
+            elif action == "show-raw":
+                self.config_manager.print_raw_config()
+            
             elif action == "reload":
                 self.config_manager.settings = self.config_manager.load_settings()
                 print("Configuration reloaded")
@@ -299,6 +305,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='MQTT DMX Sequencer with configuration file support')
     parser.add_argument('--config-dir', help='Directory containing settings.json and config.json files', default=project_root)
     parser.add_argument('--show-config', action='store_true', help='Show current configuration and exit')
+    parser.add_argument('--print-config', action='store_true', help='Print full configuration details on startup')
     
     args = parser.parse_args()
     
@@ -306,8 +313,8 @@ if __name__ == '__main__':
     settings_path = os.path.join(args.config_dir, 'settings.json')
     config_path = os.path.join(args.config_dir, 'config.json')
     
-    # Create config manager
-    config_manager = ConfigManager(settings_path)
+    # Create config manager with optional printing
+    config_manager = ConfigManager(settings_path, print_on_load=args.print_config)
     
     # Show configuration if requested
     if args.show_config:
