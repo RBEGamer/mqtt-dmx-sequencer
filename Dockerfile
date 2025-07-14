@@ -1,17 +1,9 @@
-# Use official Node.js LTS base image
-FROM node:18
+FROM python:3.11-slim
 
-# Set working directory
-WORKDIR /usr/src/app
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
 
-# Clone the repository
-RUN git clone https://github.com/hobbyquaker/mqtt-dmx-sequencer.git .
+COPY . .
 
-# Install dependencies
-RUN npm install
-
-# Expose port (adjust if needed for MQTT or internal server)
-EXPOSE 3000
-
-# Define default command to run the application
-CMD ["npm", "start"]
+CMD ["python", "mqtt_dmx_sequencer.py", "--config", "config.json", "--mqtt-url", "mqtt://localhost", "--dmx-mode", "e131", "--dmx-target", "255.255.255.255", "--dmx-universe", "1"]
