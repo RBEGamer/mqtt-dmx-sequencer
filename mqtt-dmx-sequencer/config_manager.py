@@ -94,6 +94,12 @@ class ConfigManager:
             "sequences": {
                 "default_duration": 1.0,
                 "auto_play": True
+            },
+            "web_server": {
+                "enabled": True,
+                "port": 5000,
+                "host": "0.0.0.0",
+                "debug": False
             }
         }
     
@@ -125,6 +131,10 @@ class ConfigManager:
     def get_sequences_config(self) -> Dict[str, Any]:
         """Get sequences configuration"""
         return self.settings.get("sequences", {})
+    
+    def get_web_server_config(self) -> Dict[str, Any]:
+        """Get web server configuration"""
+        return self.settings.get("web_server", {})
     
     def update_mqtt_config(self, **kwargs) -> bool:
         """Update MQTT configuration"""
@@ -217,6 +227,11 @@ class ConfigManager:
         
         scenes_config = self.get_scenes_config()
         print(f"Default Transition Time: {scenes_config.get('default_transition_time', 'Not set')}s")
+        
+        # Web Server Configuration
+        web_config = self.get_web_server_config()
+        print(f"Web Server Enabled: {web_config.get('enabled', 'Not set')}")
+        print(f"Web Server Port: {web_config.get('port', 'Not set')}")
         
         print("=" * 50)
     

@@ -18,7 +18,7 @@ except ImportError:
 
 
 class MQTTDMXSequencer:
-    def __init__(self, config_path, settings_path=None, enable_web_server=False, web_port=5000):
+    def __init__(self, config_path, settings_path=None, enable_web_server=None, web_port=None):
         self.config_manager = ConfigManager(settings_path)
         self.config = self.load_config(config_path)
         self.dmx_manager = DMXManager()
@@ -26,9 +26,15 @@ class MQTTDMXSequencer:
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
         
-        # Web server settings
-        self.enable_web_server = enable_web_server and FLASK_AVAILABLE
-        self.web_port = web_port
+        # Web server settings from config or command line
+        web_config = self.config_manager.get_web_server_config()
+        self.enable_web_server = enable_web_server if enable_web_server is not None else web_config.get('enabled', True)
+        self.web_port = web_port if web_port is not None else web_config.get('port', 5000)
+        self.web_host = web_config.get('host', '0.0.0.0')
+        self.web_debug = web_config.get('debug', False)
+        
+        # Only enable if Flask is available
+        self.enable_web_server = self.enable_web_server and FLASK_AVAILABLE
         self.flask_app = None
         self.web_thread = None
         
@@ -119,7 +125,7 @@ class MQTTDMXSequencer:
         self.setup_flask_routes()
         
         def run_flask():
-            self.flask_app.run(host='0.0.0.0', port=self.web_port, debug=False, use_reloader=False)
+            self.flask_app.run(host=self.web_host, port=self.web_port, debug=self.web_debug, use_reloader=False)
         
         self.web_thread = threading.Thread(target=run_flask, daemon=True)
         self.web_thread.start()
@@ -775,8 +781,8 @@ if __name__ == '__main__':
     parser.add_argument('--config-dir', help='Directory containing settings.json and config.json files', default=project_root)
     parser.add_argument('--show-config', action='store_true', help='Show current configuration and exit')
     parser.add_argument('--print-config', action='store_true', help='Print full configuration details on startup')
-    parser.add_argument('--enable-web-server', action='store_true', help='Enable the Flask web server')
-    parser.add_argument('--web-port', type=int, default=5000, help='Port for the Flask web server')
+    parser.add_argument('--disable-web-server', action='store_true', help='Disable the Flask web server')
+    parser.add_argument('--web-port', type=int, help='Port for the Flask web server (overrides settings.json)')
     
     args = parser.parse_args()
     
@@ -796,7 +802,7 @@ if __name__ == '__main__':
     sequencer = MQTTDMXSequencer(
         config_path=config_path,
         settings_path=settings_path,
-        enable_web_server=args.enable_web_server,
+        enable_web_server=not args.disable_web_server,
         web_port=args.web_port
     )
     sequencer.run()
