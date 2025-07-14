@@ -14,3 +14,77 @@
 1752482046: mosquitto version 2.0.22 running
 1752482046: New connection from 192.168.65.1:16193 on port 1883.
 1752482046: Client <unknown> closed its connection.
+1752482185: mosquitto version 2.0.22 starting
+1752482185: Config loaded from /mosquitto/config/mosquitto.conf.
+1752482185: Opening ipv4 listen socket on port 1883.
+1752482185: Opening ipv6 listen socket on port 1883.
+1752482185: Opening websockets listen socket on port 9001.
+1752482185: mosquitto version 2.0.22 running
+1752482243: mosquitto version 2.0.22 terminating
+1752482243: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1752482244: mosquitto version 2.0.22 starting
+1752482244: Config loaded from /mosquitto/config/mosquitto.conf.
+1752482244: Opening ipv4 listen socket on port 1883.
+1752482244: Opening ipv6 listen socket on port 1883.
+1752482244: Opening websockets listen socket on port 9001.
+1752482244: mosquitto version 2.0.22 running
+1752482475: mosquitto version 2.0.22 terminating
+1752482475: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1752482475: mosquitto version 2.0.22 starting
+1752482475: Config loaded from /mosquitto/config/mosquitto.conf.
+1752482475: Opening ipv4 listen socket on port 1883.
+1752482475: Opening ipv6 listen socket on port 1883.
+1752482475: Opening websockets listen socket on port 9001.
+1752482475: mosquitto version 2.0.22 running
+1752482475: New connection from 172.18.0.3:44081 on port 1883.
+1752482475: New client connected from 172.18.0.3:44081 as mqtt-dmx-sequencer (p2, c1, k60).
+1752482475: No will message specified.
+1752482475: Sending CONNACK to mqtt-dmx-sequencer (0, 0)
+1752482475: Received SUBSCRIBE from mqtt-dmx-sequencer
+1752482475: 	scene/intro (QoS 0)
+1752482475: mqtt-dmx-sequencer 0 scene/intro
+1752482475: Sending SUBACK to mqtt-dmx-sequencer
+1752482475: Received SUBSCRIBE from mqtt-dmx-sequencer
+1752482475: 	scene/blackout (QoS 0)
+1752482475: mqtt-dmx-sequencer 0 scene/blackout
+1752482475: Sending SUBACK to mqtt-dmx-sequencer
+1752482475: Received SUBSCRIBE from mqtt-dmx-sequencer
+1752482475: 	dmx/set/channel/# (QoS 0)
+1752482475: mqtt-dmx-sequencer 0 dmx/set/channel/#
+1752482475: Sending SUBACK to mqtt-dmx-sequencer
+1752482475: Received SUBSCRIBE from mqtt-dmx-sequencer
+1752482475: 	dmx/scene/# (QoS 0)
+1752482475: mqtt-dmx-sequencer 0 dmx/scene/#
+1752482475: Sending SUBACK to mqtt-dmx-sequencer
+1752482475: Received SUBSCRIBE from mqtt-dmx-sequencer
+1752482475: 	dmx/sender/# (QoS 0)
+1752482475: mqtt-dmx-sequencer 0 dmx/sender/#
+1752482475: Sending SUBACK to mqtt-dmx-sequencer
+1752482475: Received SUBSCRIBE from mqtt-dmx-sequencer
+1752482475: 	dmx/config/# (QoS 0)
+1752482475: mqtt-dmx-sequencer 0 dmx/config/#
+1752482475: Sending SUBACK to mqtt-dmx-sequencer
+1752482536: Received PINGREQ from mqtt-dmx-sequencer
+1752482536: Sending PINGRESP to mqtt-dmx-sequencer
+1752482596: Received PINGREQ from mqtt-dmx-sequencer
+1752482596: Sending PINGRESP to mqtt-dmx-sequencer
+1752482656: Received PINGREQ from mqtt-dmx-sequencer
+1752482656: Sending PINGRESP to mqtt-dmx-sequencer
+1752482717: Received PINGREQ from mqtt-dmx-sequencer
+1752482717: Sending PINGRESP to mqtt-dmx-sequencer
+1752482759: New connection from 172.18.0.3:37454 on port 1883.
+1752482759: Client <unknown> closed its connection.
+1752482777: Received PINGREQ from mqtt-dmx-sequencer
+1752482777: Sending PINGRESP to mqtt-dmx-sequencer
+1752482790: New connection from 192.168.65.1:20533 on port 1883.
+1752482790: New client connected from 192.168.65.1:20533 as auto-D98D490A-E553-0F89-CC66-B2CE97B11D56 (p2, c1, k60).
+1752482790: No will message specified.
+1752482790: Sending CONNACK to auto-D98D490A-E553-0F89-CC66-B2CE97B11D56 (0, 0)
+1752482792: Received PUBLISH from auto-D98D490A-E553-0F89-CC66-B2CE97B11D56 (d0, q0, r0, m0, 'dmx/scene/blackout', ... (0 bytes))
+1752482792: Sending PUBLISH to mqtt-dmx-sequencer (d0, q0, r0, m0, 'dmx/scene/blackout', ... (0 bytes))
+1752482793: Received PUBLISH from auto-D98D490A-E553-0F89-CC66-B2CE97B11D56 (d0, q0, r0, m0, 'dmx/scene/led white', ... (0 bytes))
+1752482793: Sending PUBLISH to mqtt-dmx-sequencer (d0, q0, r0, m0, 'dmx/scene/led white', ... (0 bytes))
+1752482794: Received PUBLISH from auto-D98D490A-E553-0F89-CC66-B2CE97B11D56 (d0, q0, r0, m0, 'dmx/set/channel/1', ... (3 bytes))
+1752482794: Sending PUBLISH to mqtt-dmx-sequencer (d0, q0, r0, m0, 'dmx/set/channel/1', ... (3 bytes))
+1752482795: Received DISCONNECT from auto-D98D490A-E553-0F89-CC66-B2CE97B11D56
+1752482795: Client auto-D98D490A-E553-0F89-CC66-B2CE97B11D56 disconnected.

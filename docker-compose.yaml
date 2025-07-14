@@ -13,6 +13,8 @@ services:
       - ./mosquitto/data:/mosquitto/data
       - ./mosquitto/log:/mosquitto/log
     restart: unless-stopped
+    networks:
+      - dmx-network
 
   # MQTT DMX Sequencer
   mqtt-dmx-sequencer:
