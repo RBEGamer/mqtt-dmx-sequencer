@@ -770,6 +770,27 @@ class MQTTDMXSequencer:
                     "error": str(e)
                 }), 500
 
+        @self.flask_app.route('/api/playback/stop', methods=['POST', 'GET'])
+        def stop_playback():
+            """Stop the current sequence playback"""
+            try:
+                stopped = self.stop_sequence_playback()
+                if stopped:
+                    return jsonify({
+                        "success": True,
+                        "message": "Sequence playback stopped"
+                    })
+                else:
+                    return jsonify({
+                        "success": False,
+                        "message": "No sequence playback is currently active"
+                    }), 404
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
     def save_config(self):
         """Save current configuration to file"""
         try:
@@ -1039,6 +1060,18 @@ class MQTTDMXSequencer:
         except Exception as e:
             print(f"Error handling config management: {e}")
 
+    def stop_sequence_playback(self):
+        """Stop the current sequence playback"""
+        if self.current_sequence_playback:
+            print("Stopping sequence playback...")
+            self.current_sequence_playback = None
+            self.current_step_index = 0
+            self.current_step_data = None
+            # Blackout all DMX channels when stopping
+            self.dmx_manager.blackout()
+            return True
+        return False
+
     def play_scene(self, scene_name, transition_time=0.0):
         """Play a scene with optional transition time"""
         if scene_name not in self.config.get('scenes', {}):
@@ -1084,10 +1117,10 @@ class MQTTDMXSequencer:
         }
         
         def run():
-            while not self.shutdown_requested:  # Loop indefinitely if loop=True
+            while not self.shutdown_requested and self.current_sequence_playback:  # Loop indefinitely if loop=True
                 for step_index, step in enumerate(sequence):
-                    # Check for shutdown request
-                    if self.shutdown_requested:
+                    # Check for shutdown request or stop request
+                    if self.shutdown_requested or not self.current_sequence_playback:
                         break
                     # Update current step information
                     self.current_step_index = step_index
@@ -1109,12 +1142,12 @@ class MQTTDMXSequencer:
                         else:
                             print(f"Scene '{scene_name}' not found")
                         
-                        # Wait for duration, checking for shutdown
+                        # Wait for duration, checking for shutdown or stop
                         for _ in range(int(duration * 10)):
-                            if self.shutdown_requested:
+                            if self.shutdown_requested or not self.current_sequence_playback:
                                 break
                             time.sleep(0.1)
-                        if self.shutdown_requested:
+                        if self.shutdown_requested or not self.current_sequence_playback:
                             break
                     else:
                         # This is a direct DMX step
@@ -1138,8 +1171,14 @@ class MQTTDMXSequencer:
                         if auto_play:
                             self.dmx_manager.send()
                         
-                        # Wait for duration
-                        time.sleep(duration)
+                        # Wait for duration, checking for stop request
+                        start_time = time.time()
+                        while time.time() - start_time < duration:
+                            if self.shutdown_requested or not self.current_sequence_playback:
+                                break
+                            time.sleep(0.1)
+                        if self.shutdown_requested or not self.current_sequence_playback:
+                            break
                 
                 if not loop:
                     break  # Exit loop if not set to loop

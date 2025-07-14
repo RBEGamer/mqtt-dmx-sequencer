@@ -101,12 +101,12 @@ class DMXConsole {
             const slider = fader.querySelector('.fader-slider');
             const valueDisplay = fader.querySelector('.fader-value');
 
-            slider.addEventListener('input', (e) => {
+            slider.addEventListener('input', async (e) => {
                 const value = parseInt(e.target.value);
                 const channel = parseInt(e.target.dataset.channel);
                 // If a scene or sequence is playing, stop it before sending manual DMX
                 if (this.isPlaying) {
-                    this.stopSequence();
+                    await this.stopSequence();
                 }
                 this.currentChannels[channel - 1] = value;
                 valueDisplay.textContent = value;
@@ -608,10 +608,10 @@ class DMXConsole {
                 </div>
                 <p>${scene.description || 'No description'}</p>
                 <div class="card-actions">
-                    <button class="btn btn-primary" onclick="console.playScene('${scene.id}')">
+                    <button class="btn btn-primary" onclick="dmxConsole.playScene('${scene.id}')">
                         <i class="fas fa-play"></i> Play
                     </button>
-                    <button class="btn btn-secondary" onclick="console.openSceneEditor('${scene.id}')">
+                    <button class="btn btn-secondary" onclick="dmxConsole.openSceneEditor('${scene.id}')">
                         <i class="fas fa-edit"></i> Edit
                     </button>
                 </div>
@@ -738,10 +738,10 @@ class DMXConsole {
                 <p>Click to configure</p>
             </div>
             <div class="step-actions">
-                <button class="btn-icon" onclick="console.editStep(${stepIndex})" title="Edit">
+                <button class="btn-icon" onclick="dmxConsole.editStep(${stepIndex})" title="Edit">
                     <i class="fas fa-edit"></i>
                 </button>
-                <button class="btn-icon danger" onclick="console.removeStep(${stepIndex})" title="Remove">
+                <button class="btn-icon danger" onclick="dmxConsole.removeStep(${stepIndex})" title="Remove">
                     <i class="fas fa-trash"></i>
                 </button>
             </div>
@@ -763,10 +763,10 @@ class DMXConsole {
                     <p>Scene: ${step.scene_name || 'Unknown'}, Duration: ${step.duration}ms</p>
                 </div>
                 <div class="step-actions">
-                    <button class="btn-icon" onclick="console.editStep(${index})" title="Edit">
+                    <button class="btn-icon" onclick="dmxConsole.editStep(${index})" title="Edit">
                         <i class="fas fa-edit"></i>
                     </button>
-                    <button class="btn-icon danger" onclick="console.removeStep(${index})" title="Remove">
+                    <button class="btn-icon danger" onclick="dmxConsole.removeStep(${index})" title="Remove">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
@@ -842,9 +842,9 @@ class DMXConsole {
                 step.querySelectorAll('.btn-icon').forEach(btn => {
                     btn.onclick = () => {
                         if (btn.classList.contains('danger')) {
-                            this.removeStep(index);
+                            dmxConsole.removeStep(index);
                         } else {
-                            this.editStep(index);
+                            dmxConsole.editStep(index);
                         }
                     };
                 });
@@ -946,10 +946,10 @@ class DMXConsole {
                 </div>
                 <p>${sequence.description || 'No description'}</p>
                 <div class="card-actions">
-                    <button class="btn btn-primary" onclick="console.playSequence('${sequence.id}')">
+                    <button class="btn btn-primary" onclick="dmxConsole.playSequence('${sequence.id}')">
                         <i class="fas fa-play"></i> Play
                     </button>
-                    <button class="btn btn-secondary" onclick="console.openSequenceEditor('${sequence.id}')">
+                    <button class="btn btn-secondary" onclick="dmxConsole.openSequenceEditor('${sequence.id}')">
                         <i class="fas fa-edit"></i> Edit
                     </button>
                 </div>
@@ -991,7 +991,24 @@ class DMXConsole {
         this.showNotification('Playback paused', 'warning');
     }
 
-    stopSequence() {
+    async stopSequence() {
+        try {
+            // Call backend API to stop sequence playback
+            const response = await fetch(`${this.apiUrl}/playback/stop`, {
+                method: 'POST'
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                console.log('Stop sequence response:', result);
+            } else {
+                console.error('Failed to stop sequence playback');
+            }
+        } catch (error) {
+            console.error('Error stopping sequence playback:', error);
+        }
+        
+        // Clear frontend state
         this.isPlaying = false;
         this.currentSequence = null;
         this.currentScene = null;
@@ -1171,35 +1188,43 @@ class DMXConsole {
 }
 
 // Global functions for onclick handlers
-let console;
+let dmxConsole;
 
 // Initialize console when page loads
 document.addEventListener('DOMContentLoaded', () => {
-    console = new DMXConsole();
+    dmxConsole = new DMXConsole();
+    // Explicitly bind the stop button to the async function
+    const stopBtn = document.getElementById('stop-btn');
+    if (stopBtn) {
+        stopBtn.onclick = async function() {
+            console.log('Stop button clicked');
+            await dmxConsole.stopSequence();
+        };
+    }
 });
 
 // Global functions for HTML onclick handlers
-function blackout() { console.blackout(); }
-function setAllChannels(value) { console.setAllChannels(value); }
-function testConnection() { console.testConnection(); }
-function openSceneEditor(id) { console.openSceneEditor(id); }
-function closeSceneEditor() { console.closeSceneEditor(); }
-function saveScene() { console.saveScene(); }
-function openSequenceEditor(id) { console.openSequenceEditor(id); }
-function closeSequenceEditor() { console.closeSequenceEditor(); }
-function saveSequence() { console.saveSequence(); }
-function addSequenceStep() { console.addSequenceStep(); }
-function editStep(index) { console.editStep(index); }
-function closeStepEditor() { console.closeStepEditor(); }
-function saveStep() { console.saveStep(); }
-function removeStep(index) { console.removeStep(index); }
-function playSequence(id) { console.playSequence(id); }
-function pauseSequence() { console.pauseSequence(); }
-function stopSequence() { console.stopSequence(); }
-function togglePlayback() { console.togglePlayback(); }
-function toggleSceneAutostart(id) { console.toggleSceneAutostart(id); }
-function toggleSequenceAutostart(id) { console.toggleSequenceAutostart(id); }
-function toggleSceneAutostartFromEditor() { console.toggleSceneAutostartFromEditor(); }
-function toggleSequenceAutostartFromEditor() { console.toggleSequenceAutostartFromEditor(); }
-function deleteSceneFromEditor() { console.deleteSceneFromEditor(); }
-function deleteSequenceFromEditor() { console.deleteSequenceFromEditor(); } 
+function blackout() { dmxConsole.blackout(); }
+function setAllChannels(value) { dmxConsole.setAllChannels(value); }
+function testConnection() { dmxConsole.testConnection(); }
+function openSceneEditor(id) { dmxConsole.openSceneEditor(id); }
+function closeSceneEditor() { dmxConsole.closeSceneEditor(); }
+function saveScene() { dmxConsole.saveScene(); }
+function openSequenceEditor(id) { dmxConsole.openSequenceEditor(id); }
+function closeSequenceEditor() { dmxConsole.closeSequenceEditor(); }
+function saveSequence() { dmxConsole.saveSequence(); }
+function addSequenceStep() { dmxConsole.addSequenceStep(); }
+function editStep(index) { dmxConsole.editStep(index); }
+function closeStepEditor() { dmxConsole.closeStepEditor(); }
+function saveStep() { dmxConsole.saveStep(); }
+function removeStep(index) { dmxConsole.removeStep(index); }
+function playSequence(id) { dmxConsole.playSequence(id); }
+function pauseSequence() { dmxConsole.pauseSequence(); }
+async function stopSequence() { await dmxConsole.stopSequence(); }
+function togglePlayback() { dmxConsole.togglePlayback(); }
+function toggleSceneAutostart(id) { dmxConsole.toggleSceneAutostart(id); }
+function toggleSequenceAutostart(id) { dmxConsole.toggleSequenceAutostart(id); }
+function toggleSceneAutostartFromEditor() { dmxConsole.toggleSceneAutostartFromEditor(); }
+function toggleSequenceAutostartFromEditor() { dmxConsole.toggleSequenceAutostartFromEditor(); }
+function deleteSceneFromEditor() { dmxConsole.deleteSceneFromEditor(); }
+function deleteSequenceFromEditor() { dmxConsole.deleteSequenceFromEditor(); } 
