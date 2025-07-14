@@ -28,13 +28,13 @@
     ],
     "green": [
       0,
+      0,
+      0,
+      0,
+      0,
       255,
       0,
-      0,
-      0,
-      0,
-      0,
-      0,
+      255,
       0,
       0,
       0,
@@ -55,13 +55,13 @@
     "blue": [
       0,
       0,
+      0,
+      0,
+      0,
       255,
       0,
       0,
-      0,
-      0,
-      0,
-      0,
+      255,
       0,
       0,
       0,
@@ -135,20 +135,20 @@
     "rainbow": {
       "steps": [
         {
-          "scene_id": "scene_1",
-          "scene_name": "Scene 1",
+          "scene_id": "red",
+          "scene_name": "red",
           "duration": 1000,
           "fade": 500
         },
         {
-          "scene_id": "scene_2",
-          "scene_name": "Scene 2",
+          "scene_id": "green",
+          "scene_name": "green",
           "duration": 1000,
           "fade": 500
         },
         {
-          "scene_id": "scene_3",
-          "scene_name": "Scene 3",
+          "scene_id": "blue",
+          "scene_name": "blue",
           "duration": 1000,
           "fade": 500
         }

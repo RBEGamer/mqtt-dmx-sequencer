@@ -5,6 +5,8 @@ import time
 import threading
 import paho.mqtt.client as mqtt
 import os
+import signal
+import sys
 from dmx_senders import DMXManager, ArtNetSender, E131Sender, TestSender
 from config_manager import ConfigManager
 
@@ -61,6 +63,11 @@ class MQTTDMXSequencer:
         # Setup web server if enabled
         if self.enable_web_server:
             self.setup_web_server()
+        
+        # Setup signal handlers for graceful shutdown
+        self.shutdown_requested = False
+        signal.signal(signal.SIGINT, self.signal_handler)
+        signal.signal(signal.SIGTERM, self.signal_handler)
 
     def load_config(self, path):
         print(f"Loading config from: {path}")
@@ -859,6 +866,52 @@ class MQTTDMXSequencer:
             print("MQTT broker disconnected")
         self.mqtt_connected = False
 
+    def signal_handler(self, signum, frame):
+        """Handle shutdown signals (SIGINT, SIGTERM)"""
+        print(f"\nReceived signal {signum}, initiating graceful shutdown...")
+        self.shutdown_requested = True
+        self.shutdown()
+
+    def shutdown(self):
+        """Perform graceful shutdown of all components"""
+        print("Shutting down MQTT DMX Sequencer...")
+        
+        # Stop sequence playback
+        if self.current_sequence_playback:
+            print("Stopping sequence playback...")
+            self.current_sequence_playback = None
+            self.current_step_index = 0
+            self.current_step_data = None
+        
+        # Disable autostart
+        self.disable_current_autostart()
+        
+        # Disconnect MQTT
+        if self.client:
+            print("Disconnecting MQTT client...")
+            try:
+                self.client.disconnect()
+            except Exception as e:
+                print(f"Error disconnecting MQTT: {e}")
+            self.client = None
+            self.mqtt_connected = False
+        
+        # Stop DMX senders
+        print("Stopping DMX senders...")
+        try:
+            self.dmx_manager.stop_all()
+        except Exception as e:
+            print(f"Error stopping DMX senders: {e}")
+        
+        # Stop web server if running
+        if self.flask_app and self.web_thread and self.web_thread.is_alive():
+            print("Stopping web server...")
+            # Flask doesn't have a built-in shutdown method, but the thread is daemon
+            # so it will be terminated when the main process exits
+        
+        print("Shutdown complete.")
+        sys.exit(0)
+
     def stop_mqtt_reconnection(self):
         """Stop MQTT reconnection attempts"""
         if self.client:
@@ -1031,8 +1084,11 @@ class MQTTDMXSequencer:
         }
         
         def run():
-            while True:  # Loop indefinitely if loop=True
+            while not self.shutdown_requested:  # Loop indefinitely if loop=True
                 for step_index, step in enumerate(sequence):
+                    # Check for shutdown request
+                    if self.shutdown_requested:
+                        break
                     # Update current step information
                     self.current_step_index = step_index
                     self.current_step_data = step
@@ -1053,8 +1109,13 @@ class MQTTDMXSequencer:
                         else:
                             print(f"Scene '{scene_name}' not found")
                         
-                        # Wait for duration
-                        time.sleep(duration)
+                        # Wait for duration, checking for shutdown
+                        for _ in range(int(duration * 10)):
+                            if self.shutdown_requested:
+                                break
+                            time.sleep(0.1)
+                        if self.shutdown_requested:
+                            break
                     else:
                         # This is a direct DMX step
                         dmx_data = step.get('dmx', {})
@@ -1110,16 +1171,12 @@ class MQTTDMXSequencer:
             else:
                 print("MQTT client not initialized, running without MQTT")
                 # Keep the application running even without MQTT
-                while True:
+                while not self.shutdown_requested:
                     time.sleep(1)
                     
         except KeyboardInterrupt:
-            print("Shutting down...")
-            self.disable_current_autostart()
-            if self.client:
-                self.client.disconnect()
-            self.dmx_manager.stop_all()
-            print("Shutdown complete.")
+            print("\nReceived Ctrl+C, initiating graceful shutdown...")
+            self.shutdown()
 
 
 if __name__ == '__main__':
