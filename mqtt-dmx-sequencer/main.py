@@ -553,6 +553,23 @@ class MQTTDMXSequencer:
                     "error": str(e)
                 }), 500
 
+        @self.flask_app.route('/api/dmx/blackout', methods=['POST'])
+        def blackout():
+            """Blackout all DMX channels (set to 0)"""
+            try:
+                self.dmx_manager.blackout()
+                
+                return jsonify({
+                    "success": True,
+                    "message": "Blackout activated - all channels set to 0"
+                })
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
     def save_config(self):
         """Save current configuration to file"""
         try:

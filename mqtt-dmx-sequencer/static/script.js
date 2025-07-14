@@ -26,6 +26,9 @@ class DMXConsole {
         
         // Update time every second
         setInterval(() => this.updateTime(), 1000);
+        
+        // Sync sliders with current DMX state every 5 seconds
+        setInterval(() => this.syncSlidersWithDMX(), 5000);
     }
 
     setupEventListeners() {
@@ -82,7 +85,7 @@ class DMXConsole {
             fader.innerHTML = `
                 <div class="fader-label">CH${i}</div>
                 <input type="range" class="fader-slider" min="0" max="255" value="0" 
-                       data-channel="${i}" orient="vertical">
+                       data-channel="${i}">
                 <div class="fader-value">0</div>
             `;
 
@@ -158,11 +161,24 @@ class DMXConsole {
     }
 
     // DMX Control Functions
-    blackout() {
-        this.currentChannels.fill(0);
-        this.updateAllFaders();
-        this.sendDMXAll(this.currentChannels);
-        this.showNotification('Blackout activated', 'warning');
+    async blackout() {
+        try {
+            const response = await fetch(`${this.apiUrl}/dmx/blackout`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (response.ok) {
+                this.currentChannels.fill(0);
+                this.updateAllFaders();
+                this.showNotification('Blackout activated - all channels set to 0', 'warning');
+            } else {
+                throw new Error('Failed to activate blackout');
+            }
+        } catch (error) {
+            console.error('Failed to activate blackout:', error);
+            this.showNotification('Failed to activate blackout', 'error');
+        }
     }
 
     setAllChannels(value) {
@@ -179,6 +195,40 @@ class DMXConsole {
                 slider.nextElementSibling.textContent = this.currentChannels[index];
             }
         });
+    }
+
+    updateFaderFromChannel(channel, value) {
+        // Update a specific fader when a channel value changes
+        const slider = document.querySelector(`.fader-slider[data-channel="${channel}"]`);
+        if (slider) {
+            slider.value = value;
+            slider.nextElementSibling.textContent = value;
+        }
+        // Also update the currentChannels array
+        if (channel >= 1 && channel <= this.currentChannels.length) {
+            this.currentChannels[channel - 1] = value;
+        }
+    }
+
+    async syncSlidersWithDMX() {
+        // This function could be used to sync sliders with current DMX state
+        // For now, we'll just ensure the sliders reflect the currentChannels array
+        this.updateAllFaders();
+    }
+
+    setActiveScene(sceneId) {
+        // Remove active class from all scene cards
+        document.querySelectorAll('.scene-card').forEach(card => {
+            card.classList.remove('active');
+        });
+        
+        // Add active class to the current scene card
+        if (sceneId) {
+            const activeCard = document.querySelector(`.scene-card[data-scene-id="${sceneId}"]`);
+            if (activeCard) {
+                activeCard.classList.add('active');
+            }
+        }
     }
 
     // Scene Management
@@ -219,13 +269,14 @@ class DMXConsole {
         container.innerHTML = '';
 
         for (let i = 1; i <= this.channelCount; i++) {
+            const channelValue = channels[i-1] || 0;
             const channelDiv = document.createElement('div');
             channelDiv.className = 'channel-slider';
             channelDiv.innerHTML = `
-                <input type="range" min="0" max="255" value="${channels[i-1] || 0}" 
-                       data-channel="${i}" orient="vertical">
+                <input type="range" min="0" max="255" value="${channelValue}" 
+                       data-channel="${i}">
                 <label>CH${i}</label>
-                <div class="value">${channels[i-1] || 0}</div>
+                <div class="value">${channelValue}</div>
             `;
 
             const slider = channelDiv.querySelector('input[type="range"]');
@@ -310,6 +361,7 @@ class DMXConsole {
         this.scenes.forEach(scene => {
             const card = document.createElement('div');
             card.className = 'scene-card';
+            card.dataset.sceneId = scene.id;
             card.innerHTML = `
                 <h4>${scene.name}</h4>
                 <p>${scene.description || 'No description'}</p>
@@ -331,13 +383,36 @@ class DMXConsole {
 
     async playScene(sceneId) {
         try {
+            // Find the scene data to get channel values
+            const scene = this.scenes.find(s => s.id === sceneId);
+            if (!scene) {
+                this.showNotification('Scene not found', 'error');
+                return;
+            }
+
+            // Play the scene via API
             const response = await fetch(`${this.apiUrl}/scenes/${sceneId}/play`, {
                 method: 'POST'
             });
+            
             if (response.ok) {
-                this.showNotification('Scene played successfully', 'success');
+                // Update current channels with scene values
+                if (scene.channels && Array.isArray(scene.channels)) {
+                    // Update the currentChannels array with scene values
+                    for (let i = 0; i < Math.min(scene.channels.length, this.currentChannels.length); i++) {
+                        this.currentChannels[i] = scene.channels[i] || 0;
+                    }
+                    
+                    // Update the sidebar sliders to reflect the scene values
+                    this.updateAllFaders();
+                }
+                
+                this.showNotification(`Scene "${scene.name}" played successfully`, 'success');
+            } else {
+                throw new Error('Failed to play scene');
             }
         } catch (error) {
+            console.error('Failed to play scene:', error);
             this.showNotification('Failed to play scene', 'error');
         }
     }

@@ -75,7 +75,7 @@ body {
 
 /* Fader Panel */
 .fader-panel {
-    width: 300px;
+    width: 450px;
     background: #2a2a2a;
     border-right: 2px solid #444;
     display: flex;
@@ -122,7 +122,7 @@ body {
     padding: 12px;
     overflow-y: auto;
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 8px;
 }
 
@@ -135,7 +135,7 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
 }
 
 .fader-label {
@@ -146,15 +146,14 @@ body {
 }
 
 .fader-slider {
-    width: 20px;
-    height: 120px;
+    width: 120px;
+    height: 20px;
     -webkit-appearance: none;
     appearance: none;
     background: #222;
     border: 1px solid #666;
     border-radius: 10px;
     outline: none;
-    transform: rotate(180deg);
 }
 
 .fader-slider::-webkit-slider-thumb {
@@ -559,11 +558,11 @@ body {
 /* Channel Editor */
 .channel-editor {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-    gap: 8px;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 12px;
     max-height: 300px;
     overflow-y: auto;
-    padding: 8px;
+    padding: 12px;
     background: #333;
     border-radius: 6px;
 }
@@ -576,15 +575,14 @@ body {
 }
 
 .channel-slider input[type="range"] {
-    width: 20px;
-    height: 100px;
+    width: 100px;
+    height: 20px;
     -webkit-appearance: none;
     appearance: none;
     background: #222;
     border: 1px solid #666;
     border-radius: 10px;
     outline: none;
-    transform: rotate(180deg);
 }
 
 .channel-slider input[type="range"]::-webkit-slider-thumb {
@@ -727,7 +725,7 @@ body {
 /* Responsive Design */
 @media (max-width: 1200px) {
     .fader-panel {
-        width: 250px;
+        width: 400px;
     }
     
     .playback-panel {
@@ -735,7 +733,7 @@ body {
     }
     
     .fader-container {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, 1fr);
     }
 }
 
@@ -750,7 +748,7 @@ body {
     }
     
     .fader-container {
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(2, 1fr);
     }
     
     .editor-layout {
