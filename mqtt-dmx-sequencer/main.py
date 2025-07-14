@@ -37,6 +37,9 @@ class MQTTDMXSequencer:
         self.current_step_index = 0
         self.current_step_data = None
         
+        # MQTT channel update tracking
+        self.last_mqtt_channel_update = None
+        
         # Autostart management
         self.autostart_config = self.config.get('autostart', {})
         self.current_autostart = None
@@ -791,6 +794,28 @@ class MQTTDMXSequencer:
                     "error": str(e)
                 }), 500
 
+        @self.flask_app.route('/api/dmx/channel-update', methods=['GET'])
+        def get_channel_update():
+            """Get the last MQTT channel update for frontend sync"""
+            try:
+                if self.last_mqtt_channel_update:
+                    update = self.last_mqtt_channel_update.copy()
+                    self.last_mqtt_channel_update = None  # Clear after sending
+                    return jsonify({
+                        "success": True,
+                        "update": update
+                    })
+                else:
+                    return jsonify({
+                        "success": True,
+                        "update": None
+                    })
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
     def save_config(self):
         """Save current configuration to file"""
         try:
@@ -979,6 +1004,8 @@ class MQTTDMXSequencer:
                 self.dmx_manager.set_channel(channel, value)
                 self.dmx_manager.send()
                 print(f"Set channel {channel} to value {value}")
+                # Notify frontend of the update via a simple flag
+                self.last_mqtt_channel_update = {'channel': channel, 'value': value}
             else:
                 print(f"Invalid channel ({channel}) or value ({value}). Channel must be 1-512, value must be 0-255.")
         except (ValueError, IndexError) as e:

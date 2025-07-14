@@ -38,6 +38,9 @@ class DMXConsole {
         
         // Poll for playback status every 500ms when playing
         setInterval(() => this.pollPlaybackStatus(), 500);
+        
+        // Poll for MQTT channel updates every 200ms
+        setInterval(() => this.pollMQTTChannelUpdates(), 200);
     }
 
     setupEventListeners() {
@@ -230,36 +233,50 @@ class DMXConsole {
     }
 
     async pollPlaybackStatus() {
-        if (!this.isPlaying || !this.currentSequence) {
-            return;
-        }
-
+        if (!this.isPlaying) return;
+        
         try {
             const response = await fetch(`${this.apiUrl}/playback/status`);
             if (response.ok) {
-                const result = await response.json();
-                if (result.success && result.data) {
-                    const status = result.data;
+                const data = await response.json();
+                if (data.success && data.status) {
+                    const status = data.status;
                     
-                    // Update step information if playing
-                    if (status.is_playing && status.current_step_data) {
+                    // Update current step info if available
+                    if (status.current_step !== undefined && status.current_step_data) {
                         this.currentStep = status.current_step;
                         this.currentStepData = status.current_step_data;
-                        this.updateSequenceStepInfo(status.current_step, status.current_step_data);
+                        this.updateSequenceStepInfo(this.currentStep, this.currentStepData);
+                        this.showSequenceStepInfo();
                         
-                        // Show step info if not already visible
-                        if (this.currentSequence) {
-                            this.showSequenceStepInfo();
+                        // Start progress tracking for current step
+                        if (status.current_step_data.duration) {
+                            this.startStepProgress(status.current_step_data);
                         }
-                    } else if (!status.is_playing) {
-                        // Hide step info if not playing
-                        this.hideSequenceStepInfo();
                     }
                 }
             }
         } catch (error) {
-            // Silently handle errors for polling
-            console.debug('Playback status polling error:', error);
+            console.error('Failed to poll playback status:', error);
+        }
+    }
+
+    async pollMQTTChannelUpdates() {
+        try {
+            const response = await fetch(`${this.apiUrl}/dmx/channel-update`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.update) {
+                    const { channel, value } = data.update;
+                    console.log(`MQTT channel update: ${channel} = ${value}`);
+                    
+                    // Update the frontend slider and internal state
+                    this.updateFaderFromChannel(channel, value);
+                    this.currentChannels[channel - 1] = value;
+                }
+            }
+        } catch (error) {
+            // Silently ignore errors for this polling endpoint
         }
     }
 
