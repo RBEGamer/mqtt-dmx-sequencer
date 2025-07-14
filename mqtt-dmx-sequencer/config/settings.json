@@ -1,6 +1,6 @@
 {
   "mqtt": {
-    "url": "mqtt://localhost",
+    "url": "mqtt://192.168.178.75",
     "port": 1883,
     "username": "",
     "password": "",
@@ -9,12 +9,13 @@
     "clean_session": true
   },
   "dmx": {
-    "test_mode": true,
     "default_configs": [
       {
-        "type": "test",
+        "type": "e131",
         "name": "main",
-        "universe": 1
+        "target": "192.168.178.75",
+        "universe": 1,
+        "fps": 40
       }
     ],
     "artnet": {
@@ -37,6 +38,12 @@
   "sequences": {
     "default_duration": 1.0,
     "auto_play": true
+  },
+  "web_server": {
+    "enabled": true,
+    "port": 5000,
+    "host": "0.0.0.0",
+    "debug": false
   },
   "frontend_mqtt_passthrough": true
 } 
