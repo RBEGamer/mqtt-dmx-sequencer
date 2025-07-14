@@ -30,6 +30,11 @@ class MQTTDMXSequencer:
         self.mqtt_reconnect_attempts = 0
         self.max_mqtt_reconnect_attempts = 3
         
+        # Sequence playback state
+        self.current_sequence_playback = None
+        self.current_step_index = 0
+        self.current_step_data = None
+        
         # Autostart management
         self.autostart_config = self.config.get('autostart', {})
         self.current_autostart = None
@@ -58,8 +63,11 @@ class MQTTDMXSequencer:
             self.setup_web_server()
 
     def load_config(self, path):
+        print(f"Loading config from: {path}")
         with open(path, 'r') as f:
-            return json.load(f)
+            config = json.load(f)
+        print(f"Config loaded successfully from: {path}")
+        return config
 
     def connect_mqtt(self):
         """Connect to MQTT broker using settings"""
@@ -732,6 +740,29 @@ class MQTTDMXSequencer:
                     "error": str(e)
                 }), 500
 
+        @self.flask_app.route('/api/playback/status', methods=['GET'])
+        def get_playback_status():
+            """Get current playback status"""
+            try:
+                status = {
+                    'is_playing': self.current_sequence_playback is not None,
+                    'current_step': self.current_step_index,
+                    'total_steps': self.current_sequence_playback['total_steps'] if self.current_sequence_playback else 0,
+                    'current_step_data': self.current_step_data,
+                    'loop': self.current_sequence_playback['loop'] if self.current_sequence_playback else False
+                }
+                
+                return jsonify({
+                    "success": True,
+                    "data": status
+                })
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
     def save_config(self):
         """Save current configuration to file"""
         try:
@@ -992,9 +1023,20 @@ class MQTTDMXSequencer:
         print(f"Starting sequence playback - Steps: {len(sequence)}, Loop: {loop}, Auto play: {auto_play}")
         print(f"Active DMX senders: {self.dmx_manager.list_senders()}")
         
+        # Set current sequence playback state
+        self.current_sequence_playback = {
+            'sequence': sequence,
+            'loop': loop,
+            'total_steps': len(sequence)
+        }
+        
         def run():
             while True:  # Loop indefinitely if loop=True
                 for step_index, step in enumerate(sequence):
+                    # Update current step information
+                    self.current_step_index = step_index
+                    self.current_step_data = step
+                    
                     print(f"Playing step {step_index + 1}/{len(sequence)}")
                     
                     # Check if this is a scene-based step or direct DMX step
@@ -1043,6 +1085,10 @@ class MQTTDMXSequencer:
                 else:
                     print("Sequence loop completed, restarting...")
             
+            # Clear sequence playback state when finished
+            self.current_sequence_playback = None
+            self.current_step_index = 0
+            self.current_step_data = None
             print("Sequence finished.")
         
         threading.Thread(target=run).start()

@@ -1,13 +1,13 @@
 {
   "scenes": {
     "red": [
+      0,
+      0,
+      0,
+      0,
+      0,
       255,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
+      255,
       0,
       0,
       0,
@@ -153,8 +153,8 @@
           "fade": 500
         }
       ],
-      "description": "Sequence with 3 steps",
-      "loop": false
+      "description": "Rainbow sequence with red, green, blue",
+      "loop": true
     },
     "fade": [
       {

@@ -455,6 +455,43 @@ body {
     font-weight: bold;
 }
 
+/* Sequence Step Information */
+.sequence-step-info {
+    margin-top: 16px;
+    padding: 12px;
+    background: #333;
+    border: 1px solid #555;
+    border-radius: 6px;
+}
+
+.sequence-step-info h4 {
+    color: #00ff88;
+    margin-bottom: 12px;
+    font-size: 14px;
+}
+
+.step-details {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: #222;
+    border: 1px solid #555;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00ff88, #00cc66);
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
 /* Settings Section */
 .settings-section {
     padding: 16px;

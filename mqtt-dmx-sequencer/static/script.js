@@ -10,8 +10,11 @@ class DMXConsole {
         this.currentScene = null;
         this.isPlaying = false;
         this.currentStep = 0;
+        this.currentStepData = null;
+        this.stepStartTime = null;
         this.stepTimer = null;
         this.sequenceTimer = null;
+        this.stepProgressTimer = null;
         this.autostartConfig = null;
         
         this.init();
@@ -32,6 +35,9 @@ class DMXConsole {
         
         // Sync sliders with current DMX state every 5 seconds
         setInterval(() => this.syncSlidersWithDMX(), 5000);
+        
+        // Poll for playback status every 500ms when playing
+        setInterval(() => this.pollPlaybackStatus(), 500);
     }
 
     setupEventListeners() {
@@ -98,6 +104,10 @@ class DMXConsole {
             slider.addEventListener('input', (e) => {
                 const value = parseInt(e.target.value);
                 const channel = parseInt(e.target.dataset.channel);
+                // If a scene or sequence is playing, stop it before sending manual DMX
+                if (this.isPlaying) {
+                    this.stopSequence();
+                }
                 this.currentChannels[channel - 1] = value;
                 valueDisplay.textContent = value;
                 this.sendDMXChannel(channel, value);
@@ -217,6 +227,40 @@ class DMXConsole {
         // This function could be used to sync sliders with current DMX state
         // For now, we'll just ensure the sliders reflect the currentChannels array
         this.updateAllFaders();
+    }
+
+    async pollPlaybackStatus() {
+        if (!this.isPlaying || !this.currentSequence) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`${this.apiUrl}/playback/status`);
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success && result.data) {
+                    const status = result.data;
+                    
+                    // Update step information if playing
+                    if (status.is_playing && status.current_step_data) {
+                        this.currentStep = status.current_step;
+                        this.currentStepData = status.current_step_data;
+                        this.updateSequenceStepInfo(status.current_step, status.current_step_data);
+                        
+                        // Show step info if not already visible
+                        if (this.currentSequence) {
+                            this.showSequenceStepInfo();
+                        }
+                    } else if (!status.is_playing) {
+                        // Hide step info if not playing
+                        this.hideSequenceStepInfo();
+                    }
+                }
+            }
+        } catch (error) {
+            // Silently handle errors for polling
+            console.debug('Playback status polling error:', error);
+        }
     }
 
     async loadAutostartConfig() {
@@ -923,7 +967,11 @@ class DMXConsole {
                 this.currentSequence = sequenceId;
                 this.currentScene = null;
                 this.isPlaying = true;
+                this.currentStep = 0;
+                this.currentStepData = null;
+                this.stepStartTime = null;
                 this.updatePlaybackInfo();
+                this.showSequenceStepInfo();
                 this.showNotification('Sequence started', 'success');
             }
         } catch (error) {
@@ -936,6 +984,9 @@ class DMXConsole {
         if (this.stepTimer) {
             clearTimeout(this.stepTimer);
         }
+        if (this.stepProgressTimer) {
+            clearInterval(this.stepProgressTimer);
+        }
         this.updatePlaybackInfo();
         this.showNotification('Playback paused', 'warning');
     }
@@ -945,13 +996,19 @@ class DMXConsole {
         this.currentSequence = null;
         this.currentScene = null;
         this.currentStep = 0;
+        this.currentStepData = null;
+        this.stepStartTime = null;
         if (this.stepTimer) {
             clearTimeout(this.stepTimer);
         }
         if (this.sequenceTimer) {
             clearInterval(this.sequenceTimer);
         }
+        if (this.stepProgressTimer) {
+            clearInterval(this.stepProgressTimer);
+        }
         this.updatePlaybackInfo();
+        this.hideSequenceStepInfo();
         this.showNotification('Playback stopped', 'warning');
     }
 
@@ -987,6 +1044,70 @@ class DMXConsole {
                 playPauseBtn.title = 'Play';
             }
         }
+    }
+
+    showSequenceStepInfo() {
+        const stepInfoElement = document.getElementById('sequence-step-info');
+        if (stepInfoElement) {
+            stepInfoElement.style.display = 'block';
+        }
+    }
+
+    hideSequenceStepInfo() {
+        const stepInfoElement = document.getElementById('sequence-step-info');
+        if (stepInfoElement) {
+            stepInfoElement.style.display = 'none';
+        }
+    }
+
+    updateSequenceStepInfo(stepIndex, stepData, progress = 0) {
+        const stepNumberElement = document.getElementById('current-step-number');
+        const stepSceneElement = document.getElementById('current-step-scene');
+        const stepDurationElement = document.getElementById('current-step-duration');
+        const progressFillElement = document.getElementById('step-progress-fill');
+        
+        if (stepNumberElement) {
+            stepNumberElement.textContent = `${stepIndex + 1}`;
+        }
+        
+        if (stepSceneElement) {
+            if (stepData.scene_name) {
+                stepSceneElement.textContent = stepData.scene_name;
+            } else if (stepData.dmx) {
+                stepSceneElement.textContent = 'DMX Direct';
+            } else {
+                stepSceneElement.textContent = 'Unknown';
+            }
+        }
+        
+        if (stepDurationElement) {
+            const duration = stepData.duration || 1000;
+            stepDurationElement.textContent = `${duration}ms`;
+        }
+        
+        if (progressFillElement) {
+            progressFillElement.style.width = `${progress}%`;
+        }
+    }
+
+    startStepProgress(stepData) {
+        const duration = stepData.duration || 1000;
+        const startTime = Date.now();
+        this.stepStartTime = startTime;
+        
+        if (this.stepProgressTimer) {
+            clearInterval(this.stepProgressTimer);
+        }
+        
+        this.stepProgressTimer = setInterval(() => {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min((elapsed / duration) * 100, 100);
+            this.updateSequenceStepInfo(this.currentStep, stepData, progress);
+            
+            if (progress >= 100) {
+                clearInterval(this.stepProgressTimer);
+            }
+        }, 100);
     }
 
     togglePlayback() {
