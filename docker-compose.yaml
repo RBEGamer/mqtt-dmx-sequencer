@@ -1,27 +1,12 @@
 version: '3.8'
 
 services:
-  # MQTT Broker
-  mqtt:
-    image: eclipse-mosquitto:2.0
-    container_name: mqtt-broker
-    ports:
-      - "1883:1883"
-      - "9001:9001"
-    volumes:
-      - ./mosquitto/config:/mosquitto/config
-      - ./mosquitto/data:/mosquitto/data
-      - ./mosquitto/log:/mosquitto/log
-    restart: unless-stopped
-    networks:
-      - dmx-network
 
   # MQTT DMX Sequencer
   mqtt-dmx-sequencer:
     build: ./mqtt-dmx-sequencer
     container_name: mqtt-dmx-sequencer
-    depends_on:
-      - mqtt
+    network_mode: host
     #volumes:
     #  - ./config:/app/config
     #  - ./settings.json:/app/settings.json
@@ -29,9 +14,4 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
-    networks:
-      - dmx-network
 
-networks:
-  dmx-network:
-    driver: bridge

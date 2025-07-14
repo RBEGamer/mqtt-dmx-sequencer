@@ -88,3 +88,5 @@
 1752482794: Sending PUBLISH to mqtt-dmx-sequencer (d0, q0, r0, m0, 'dmx/set/channel/1', ... (3 bytes))
 1752482795: Received DISCONNECT from auto-D98D490A-E553-0F89-CC66-B2CE97B11D56
 1752482795: Client auto-D98D490A-E553-0F89-CC66-B2CE97B11D56 disconnected.
+1752482838: Received PINGREQ from mqtt-dmx-sequencer
+1752482838: Sending PINGRESP to mqtt-dmx-sequencer
