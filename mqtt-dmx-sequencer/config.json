@@ -58,10 +58,10 @@
       255,
       0,
       0,
+      255,
       0,
       0,
-      0,
-      0,
+      255,
       0,
       0,
       0,
@@ -135,29 +135,26 @@
     "rainbow": {
       "steps": [
         {
-          "duration": 1000,
           "scene_id": "red",
-          "sequence_id": "red",
-          "blackout": "red",
-          "fade_time": 1000
+          "scene_name": "red",
+          "duration": 1000,
+          "fade": 500
         },
         {
-          "duration": 1000,
           "scene_id": "green",
-          "sequence_id": "green",
-          "blackout": "green",
-          "fade_time": 1000
+          "scene_name": "green",
+          "duration": 1000,
+          "fade": 500
         },
         {
-          "duration": 1000,
           "scene_id": "blue",
-          "sequence_id": "blue",
-          "blackout": "blue",
-          "fade_time": 1000
+          "scene_name": "blue",
+          "duration": 1000,
+          "fade": 500
         }
       ],
       "description": "Rainbow sequence with red, green, blue",
-      "loop": false
+      "loop": true
     },
     "fade": [
       {
@@ -187,8 +184,10 @@
     ]
   },
   "fallback": {
-    "type": "scene",
-    "id": "red",
-    "enabled": true
+    "scene_fallback": {
+      "enabled": true,
+      "scene_id": "red",
+      "delay": 1
+    }
   }
 }

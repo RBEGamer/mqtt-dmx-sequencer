@@ -24,6 +24,7 @@ class DMXConsole {
 
     async init() {
         await this.fetchMQTTPassthroughSetting();
+        await this.loadBackendSettings();
         this.setupEventListeners();
         this.loadSettings();
         this.generateFaders();
@@ -61,6 +62,22 @@ class DMXConsole {
         }
     }
 
+    async loadBackendSettings() {
+        try {
+            const response = await fetch(`${this.apiUrl}/config`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.data) {
+                    // Load fallback delay from backend settings
+                    const fallbackDelay = data.data.fallback_delay || 1.0;
+                    document.getElementById('fallback-delay').value = fallbackDelay;
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load backend settings:', error);
+        }
+    }
+
     setupEventListeners() {
         // Panel tabs
         document.querySelectorAll('.panel-tab').forEach(tab => {
@@ -89,6 +106,15 @@ class DMXConsole {
             this.generateFaders();
             this.saveSettings();
         });
+
+        // Fallback delay setting
+        document.getElementById('fallback-delay').addEventListener('change', async (e) => {
+            this.saveSettings();
+            // Also save to backend
+            await this.saveFallbackDelayToBackend();
+        });
+
+
     }
 
     switchPanel(panelName) {
@@ -524,6 +550,9 @@ class DMXConsole {
                 
                 // Update fallback button state
                 this.updateSceneFallbackButton(sceneId);
+                
+                // Update fallback button state
+                this.updateSceneFallbackButton(sceneId);
             }
         } else {
             title.textContent = 'New Scene';
@@ -683,9 +712,7 @@ class DMXConsole {
                     <button class="btn btn-secondary" onclick="dmxConsole.openSceneEditor('${scene.id}')">
                         <i class="fas fa-edit"></i> Edit
                     </button>
-                    <button class="btn btn-secondary btn-fallback" onclick="toggleSceneFallbackWithDelay('${scene.id}')">
-                        <i class="fas fa-play"></i> Scene Fallback
-                    </button>
+
                 </div>
             `;
             container.appendChild(card);
@@ -778,6 +805,9 @@ class DMXConsole {
                 
                 // Update autostart button state
                 this.updateSequenceAutostartButton(sequenceId);
+                
+                // Update fallback button state
+                this.updateSequenceFallbackButton(sequenceId);
                 
                 // Update fallback button state
                 this.updateSequenceFallbackButton(sequenceId);
@@ -1378,11 +1408,11 @@ class DMXConsole {
                     
                     if (isSceneFallback) {
                         const delay = sceneFallbackConfig.delay || 1.0;
-                        fallbackBtn.innerHTML = `<i class="fas fa-clock"></i> Scene Fallback (${delay}s)`;
+                        fallbackBtn.innerHTML = `<i class="fas fa-clock"></i> Global Fallback (${delay}s)`;
                     } else if (isSequenceFallback) {
                         fallbackBtn.innerHTML = `<i class="fas fa-stop"></i> Fallback ON`;
                     } else {
-                        fallbackBtn.innerHTML = `<i class="fas fa-play"></i> Scene Fallback`;
+                        fallbackBtn.innerHTML = `<i class="fas fa-play"></i> Set Global Fallback`;
                     }
                 }
             }
@@ -1424,8 +1454,8 @@ class DMXConsole {
 
     updateSceneFallbackButton(sceneId) {
         const fallbackBtn = document.getElementById('scene-fallback-btn');
-        const isFallback = this.fallbackConfig?.config?.type === 'scene' && 
-                           this.fallbackConfig?.config?.id === sceneId;
+        const sceneFallbackConfig = this.fallbackConfig?.config?.scene_fallback;
+        const isFallback = sceneFallbackConfig?.enabled && sceneFallbackConfig?.scene_id === sceneId;
         
         fallbackBtn.className = `btn ${isFallback ? 'btn-success' : 'btn-secondary'} btn-fallback`;
         fallbackBtn.innerHTML = `<i class="fas fa-${isFallback ? 'stop' : 'play'}"></i> ${isFallback ? 'Fallback ON' : 'Set Fallback'}`;
@@ -1433,8 +1463,8 @@ class DMXConsole {
 
     updateSequenceFallbackButton(sequenceId) {
         const fallbackBtn = document.getElementById('sequence-fallback-btn');
-        const isFallback = this.fallbackConfig?.config?.type === 'sequence' && 
-                           this.fallbackConfig?.config?.id === sequenceId;
+        const sequenceFallbackConfig = this.fallbackConfig?.config?.sequence_fallback;
+        const isFallback = sequenceFallbackConfig?.enabled && sequenceFallbackConfig?.sequence_id === sequenceId;
         
         fallbackBtn.className = `btn ${isFallback ? 'btn-success' : 'btn-secondary'} btn-fallback`;
         fallbackBtn.innerHTML = `<i class="fas fa-${isFallback ? 'stop' : 'play'}"></i> ${isFallback ? 'Fallback ON' : 'Set Fallback'}`;
@@ -1445,7 +1475,18 @@ class DMXConsole {
         const sceneId = modal.dataset.sceneId;
         
         if (sceneId) {
-            await this.toggleSceneFallback(sceneId);
+            const sceneFallbackConfig = this.fallbackConfig?.config?.scene_fallback;
+            const isCurrentlyFallback = sceneFallbackConfig?.enabled && sceneFallbackConfig?.scene_id === sceneId;
+            
+            if (isCurrentlyFallback) {
+                // Disable scene fallback
+                await this.setSceneFallback(sceneId, false);
+            } else {
+                // Enable scene fallback with this scene (using global delay setting)
+                const fallbackDelay = parseFloat(document.getElementById('fallback-delay').value) || 1.0;
+                await this.setSceneFallback(sceneId, true, fallbackDelay);
+            }
+            
             this.updateSceneFallbackButton(sceneId);
         }
     }
@@ -1455,7 +1496,18 @@ class DMXConsole {
         const sequenceId = modal.dataset.sequenceId;
         
         if (sequenceId) {
-            await this.toggleSequenceFallback(sequenceId);
+            const sequenceFallbackConfig = this.fallbackConfig?.config?.sequence_fallback;
+            const isCurrentlyFallback = sequenceFallbackConfig?.enabled && sequenceFallbackConfig?.sequence_id === sequenceId;
+            
+            if (isCurrentlyFallback) {
+                // Disable sequence fallback
+                await this.setSequenceFallback(sequenceId, false);
+            } else {
+                // Enable sequence fallback with this sequence (using global delay setting)
+                const fallbackDelay = parseFloat(document.getElementById('fallback-delay').value) || 1.0;
+                await this.setSequenceFallback(sequenceId, true, fallbackDelay);
+            }
+            
             this.updateSequenceFallbackButton(sequenceId);
         }
     }
@@ -1486,37 +1538,121 @@ class DMXConsole {
         }
     }
 
+    async setSequenceFallback(sequenceId, enabled = true, delay = 1.0) {
+        try {
+            const response = await fetch(`${this.apiUrl}/fallback`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sequence_fallback: {
+                        enabled: enabled,
+                        sequence_id: sequenceId,
+                        delay: delay
+                    }
+                })
+            });
+            
+            if (response.ok) {
+                await this.loadFallbackConfig();
+                this.showNotification(`Sequence fallback ${enabled ? 'enabled' : 'disabled'} for sequence '${sequenceId}' with ${delay}s delay`, 'success');
+            } else {
+                throw new Error('Failed to set sequence fallback');
+            }
+        } catch (error) {
+            console.error('Failed to set sequence fallback:', error);
+            this.showNotification('Failed to set sequence fallback', 'error');
+        }
+    }
+
     async toggleSceneFallbackWithDelay(sceneId) {
         const sceneFallbackConfig = this.fallbackConfig?.config?.scene_fallback;
         const isCurrentlyFallback = sceneFallbackConfig?.enabled && sceneFallbackConfig?.scene_id === sceneId;
         
         if (isCurrentlyFallback) {
-            await this.setSceneFallback(sceneId, false);
+            // Disable scene fallback
+            document.getElementById('scene-fallback-enabled').checked = false;
+            await this.updateSceneFallbackConfig();
         } else {
-            // Prompt for delay
-            const delay = prompt('Enter fallback delay in seconds (default: 1.0):', '1.0');
-            if (delay !== null) {
-                const delayValue = parseFloat(delay) || 1.0;
-                await this.setSceneFallback(sceneId, true, delayValue);
-            }
+            // Enable scene fallback with this scene
+            const globalDelay = parseFloat(document.getElementById('scene-fallback-delay').value) || 1.0;
+            document.getElementById('scene-fallback-enabled').checked = true;
+            document.getElementById('scene-fallback-scene').value = sceneId;
+            await this.updateSceneFallbackConfig();
         }
         
         // Refresh scenes to update fallback indicators
         this.renderScenes();
     }
 
+    async updateSceneFallbackConfig() {
+        const enabled = document.getElementById('scene-fallback-enabled').checked;
+        const delay = parseFloat(document.getElementById('scene-fallback-delay').value) || 1.0;
+        const sceneId = document.getElementById('scene-fallback-scene').value;
+        
+        try {
+            const response = await fetch(`${this.apiUrl}/fallback`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    global_scene_fallback: {
+                        enabled: enabled,
+                        scene_id: sceneId,
+                        delay: delay
+                    }
+                })
+            });
+            
+            if (response.ok) {
+                await this.loadFallbackConfig();
+                this.showNotification(`Global scene fallback ${enabled ? 'enabled' : 'disabled'} for scene '${sceneId}' with ${delay}s delay`, 'success');
+            } else {
+                throw new Error('Failed to update global scene fallback');
+            }
+        } catch (error) {
+            console.error('Failed to update global scene fallback:', error);
+            this.showNotification('Failed to update global scene fallback', 'error');
+        }
+    }
+
+
+
     // Settings Management
     loadSettings() {
         const settings = JSON.parse(localStorage.getItem('dmxConsoleSettings') || '{}');
         this.channelCount = settings.channelCount || this.channelCount;
         document.getElementById('channel-count').value = this.channelCount;
+        
+        // Load fallback delay setting
+        const fallbackDelay = settings.fallbackDelay || 1.0;
+        document.getElementById('fallback-delay').value = fallbackDelay;
     }
 
     saveSettings() {
         const settings = {
-            channelCount: this.channelCount
+            channelCount: this.channelCount,
+            fallbackDelay: parseFloat(document.getElementById('fallback-delay').value) || 1.0
         };
         localStorage.setItem('dmxConsoleSettings', JSON.stringify(settings));
+    }
+
+    async saveFallbackDelayToBackend() {
+        try {
+            const delay = parseFloat(document.getElementById('fallback-delay').value) || 1.0;
+            const response = await fetch(`${this.apiUrl}/settings/fallback-delay`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ delay: delay })
+            });
+            
+            if (response.ok) {
+                this.showNotification(`Fallback delay set to ${delay}s`, 'success');
+            } else {
+                throw new Error('Failed to save fallback delay');
+            }
+        } catch (error) {
+            console.error('Failed to save fallback delay:', error);
+            this.showNotification('Failed to save fallback delay', 'error');
+        }
     }
 
     // Utility Functions

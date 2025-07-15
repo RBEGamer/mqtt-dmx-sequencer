@@ -815,6 +815,58 @@ class MQTTDMXSequencer:
                         "message": f"Scene fallback {'enabled' if enabled else 'disabled'} for scene '{scene_id}' with {delay}s delay"
                     })
                 
+                # Handle global scene fallback configuration
+                if 'global_scene_fallback' in data:
+                    global_data = data['global_scene_fallback']
+                    enabled = global_data.get('enabled', False)
+                    scene_id = global_data.get('scene_id', 'blackout')
+                    delay = global_data.get('delay', 1.0)
+                    
+                    # Update scene fallback configuration
+                    if 'scene_fallback' not in self.fallback_config:
+                        self.fallback_config['scene_fallback'] = {}
+                    
+                    self.fallback_config['scene_fallback'] = {
+                        'enabled': enabled,
+                        'scene_id': scene_id,
+                        'delay': delay
+                    }
+                    
+                    # Save to config
+                    self.config['fallback'] = self.fallback_config
+                    self.save_config()
+                    
+                    return jsonify({
+                        "success": True,
+                        "message": f"Global scene fallback {'enabled' if enabled else 'disabled'} for scene '{scene_id}' with {delay}s delay"
+                    })
+                
+                # Handle sequence fallback configuration
+                if 'sequence_fallback' in data:
+                    sequence_fallback_data = data['sequence_fallback']
+                    enabled = sequence_fallback_data.get('enabled', False)
+                    sequence_id = sequence_fallback_data.get('sequence_id', '')
+                    delay = sequence_fallback_data.get('delay', 1.0)
+                    
+                    # Update sequence fallback configuration
+                    if 'sequence_fallback' not in self.fallback_config:
+                        self.fallback_config['sequence_fallback'] = {}
+                    
+                    self.fallback_config['sequence_fallback'] = {
+                        'enabled': enabled,
+                        'sequence_id': sequence_id,
+                        'delay': delay
+                    }
+                    
+                    # Save to config
+                    self.config['fallback'] = self.fallback_config
+                    self.save_config()
+                    
+                    return jsonify({
+                        "success": True,
+                        "message": f"Sequence fallback {'enabled' if enabled else 'disabled'} for sequence '{sequence_id}' with {delay}s delay"
+                    })
+                
                 # Handle sequence fallback configuration (existing logic)
                 if not data or 'type' not in data or 'id' not in data:
                     return jsonify({
@@ -967,6 +1019,29 @@ class MQTTDMXSequencer:
             except Exception as e:
                 return jsonify({"success": False, "error": str(e)}), 500
 
+        @self.flask_app.route('/api/settings/fallback-delay', methods=['POST'])
+        def set_fallback_delay():
+            """Set the global fallback delay"""
+            try:
+                data = request.get_json()
+                delay = data.get('delay', 1.0)
+                
+                # Validate delay
+                if not isinstance(delay, (int, float)) or delay < 0.1 or delay > 60.0:
+                    return jsonify({"success": False, "error": "Delay must be between 0.1 and 60.0 seconds"}), 400
+                
+                # Update settings
+                settings = self.config_manager.get_settings()
+                settings['fallback_delay'] = delay
+                self.config_manager.save_settings(settings)
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Fallback delay set to {delay}s"
+                })
+            except Exception as e:
+                return jsonify({"success": False, "error": str(e)}), 500
+
     def save_config(self):
         """Save current configuration to file"""
         try:
@@ -1041,7 +1116,9 @@ class MQTTDMXSequencer:
             return
             
         fallback_scene_id = scene_fallback_config.get('scene_id')
-        delay = scene_fallback_config.get('delay', 1.0)
+        # Use global fallback delay from settings
+        global_delay = self.config_manager.get_settings().get('fallback_delay', 1.0)
+        delay = scene_fallback_config.get('delay', global_delay)
         
         if not fallback_scene_id:
             return
@@ -1059,6 +1136,32 @@ class MQTTDMXSequencer:
                 print(f"Scene fallback '{fallback_scene_id}' not found")
         
         threading.Thread(target=run_scene_fallback).start()
+
+    def trigger_sequence_fallback(self):
+        """Trigger the sequence fallback after a sequence finishes"""
+        sequence_fallback_config = self.fallback_config.get('sequence_fallback', {})
+        if not sequence_fallback_config.get('enabled'):
+            return
+            
+        # Use a default fallback scene (blackout)
+        fallback_scene_id = 'blackout'
+        # Use global fallback delay from settings
+        global_delay = self.config_manager.get_settings().get('fallback_delay', 1.0)
+        delay = sequence_fallback_config.get('delay', global_delay)
+        
+        print(f"Triggering sequence fallback: scene '{fallback_scene_id}' after {delay}s delay")
+        
+        def run_sequence_fallback():
+            if delay > 0:
+                time.sleep(delay)
+            
+            if fallback_scene_id in self.config.get('scenes', {}):
+                print(f"Playing sequence fallback: {fallback_scene_id}")
+                self.play_scene(fallback_scene_id)
+            else:
+                print(f"Sequence fallback '{fallback_scene_id}' not found")
+        
+        threading.Thread(target=run_sequence_fallback).start()
 
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
@@ -1430,6 +1533,8 @@ class MQTTDMXSequencer:
             # Trigger fallback for non-looping sequences
             if not loop:
                 self.trigger_fallback()
+                # Also trigger sequence fallback
+                self.trigger_sequence_fallback()
         
         threading.Thread(target=run).start()
 
