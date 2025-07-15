@@ -34,6 +34,9 @@ class DMXConsole {
         this.loadSequences();
         this.loadAutostartConfig();
         this.loadFallbackConfig();
+        // DMX retransmission settings
+        await this.loadDMXRetransmissionSettings();
+        this.setupDMXRetransmissionListeners();
         
         // Setup fallback delay event listener after settings are loaded
         this.setupFallbackDelayListener();
@@ -1629,6 +1632,55 @@ class DMXConsole {
         }
     }
 
+    async loadDMXRetransmissionSettings() {
+        try {
+            const response = await fetch(`${this.apiUrl}/settings/dmx-retransmission`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.data) {
+                    document.getElementById('dmx-retransmission-enabled').checked = data.data.enabled;
+                    document.getElementById('dmx-retransmission-interval').value = data.data.interval;
+                    document.getElementById('dmx-retransmission-interval').disabled = !data.data.enabled;
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load DMX retransmission settings:', error);
+        }
+    }
+
+    async saveDMXRetransmissionSettings() {
+        const enabled = document.getElementById('dmx-retransmission-enabled').checked;
+        const interval = parseFloat(document.getElementById('dmx-retransmission-interval').value) || 5.0;
+        try {
+            const response = await fetch(`${this.apiUrl}/settings/dmx-retransmission`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled, interval })
+            });
+            if (response.ok) {
+                this.showNotification(`DMX retransmission ${enabled ? 'enabled' : 'disabled'} (interval: ${interval}s)`, 'success');
+            } else {
+                throw new Error('Failed to save DMX retransmission settings');
+            }
+        } catch (error) {
+            console.error('Failed to save DMX retransmission settings:', error);
+            this.showNotification('Failed to save DMX retransmission settings', 'error');
+        }
+    }
+
+    setupDMXRetransmissionListeners() {
+        const enabledInput = document.getElementById('dmx-retransmission-enabled');
+        const intervalInput = document.getElementById('dmx-retransmission-interval');
+        if (enabledInput && intervalInput) {
+            enabledInput.addEventListener('change', () => {
+                intervalInput.disabled = !enabledInput.checked;
+                this.saveDMXRetransmissionSettings();
+            });
+            intervalInput.addEventListener('input', () => {
+                this.saveDMXRetransmissionSettings();
+            });
+        }
+    }
 
 
     // Settings Management

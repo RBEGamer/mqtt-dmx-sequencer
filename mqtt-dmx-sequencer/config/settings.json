@@ -45,5 +45,9 @@
     "host": "0.0.0.0",
     "debug": false
   },
-  "frontend_mqtt_passthrough": true
+  "frontend_mqtt_passthrough": true,
+  "dmx_retransmission": {
+    "enabled": false,
+    "interval": 5.0
+  }
 } 

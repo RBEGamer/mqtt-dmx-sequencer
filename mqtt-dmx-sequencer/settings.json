@@ -47,6 +47,14 @@
   },
   "frontend_mqtt_passthrough": true,
   "fallback_delay": 1.0,
+  "dmx_retransmission": {
+    "enabled": false,
+    "interval": 5.0
+  },
+  "dmx_retransmission": {
+    "enabled": false,
+    "interval": 5.0
+  },
   "fallback": {
     "enabled": false,
     "type": "scene",

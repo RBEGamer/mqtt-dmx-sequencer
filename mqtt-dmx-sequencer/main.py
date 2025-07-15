@@ -81,6 +81,12 @@ class MQTTDMXSequencer:
         elif self.enable_web_server and not FLASK_AVAILABLE:
             print("Warning: Web server requested but Flask not available")
 
+        self.dmx_retransmission_thread = None
+        self.dmx_retransmission_stop = threading.Event()
+        self.dmx_retransmission_settings = self.config_manager.settings.get('dmx_retransmission', {'enabled': False, 'interval': 5.0})
+        if self.dmx_retransmission_settings.get('enabled', False):
+            self.start_dmx_retransmission()
+
     def load_config(self, path):
         print(f"Loading config from: {path}")
         with open(path, 'r') as f:
@@ -1090,6 +1096,29 @@ class MQTTDMXSequencer:
             except Exception as e:
                 return jsonify({"success": False, "error": str(e)}), 500
 
+        @self.flask_app.route('/api/settings/dmx-retransmission', methods=['GET'])
+        def get_dmx_retransmission():
+            try:
+                return jsonify({
+                    'success': True,
+                    'data': self.dmx_retransmission_settings
+                })
+            except Exception as e:
+                return jsonify({'success': False, 'error': str(e)}), 500
+
+        @self.flask_app.route('/api/settings/dmx-retransmission', methods=['POST'])
+        def set_dmx_retransmission():
+            try:
+                data = request.get_json()
+                enabled = bool(data.get('enabled', False))
+                interval = float(data.get('interval', 5.0))
+                if interval < 0.1 or interval > 60.0:
+                    return jsonify({'success': False, 'error': 'Interval must be between 0.1 and 60 seconds'}), 400
+                self.update_dmx_retransmission_settings(enabled, interval)
+                return jsonify({'success': True, 'data': self.dmx_retransmission_settings})
+            except Exception as e:
+                return jsonify({'success': False, 'error': str(e)}), 500
+
     def save_config(self):
         """Save current configuration to file"""
         try:
@@ -1340,6 +1369,7 @@ class MQTTDMXSequencer:
             # Flask doesn't have a built-in shutdown method, but the thread is daemon
             # so it will be terminated when the main process exits
         
+        self.stop_dmx_retransmission()
         print("Shutdown complete.")
         sys.exit(0)
 
@@ -1651,6 +1681,33 @@ class MQTTDMXSequencer:
                 self.trigger_sequence_fallback()
         
         threading.Thread(target=run).start()
+
+    def start_dmx_retransmission(self):
+        if self.dmx_retransmission_thread and self.dmx_retransmission_thread.is_alive():
+            return
+        self.dmx_retransmission_stop.clear()
+        def retransmit():
+            while not self.dmx_retransmission_stop.is_set():
+                interval = self.dmx_retransmission_settings.get('interval', 5.0)
+                self.dmx_manager.send()
+                self.dmx_retransmission_stop.wait(interval)
+        self.dmx_retransmission_thread = threading.Thread(target=retransmit, daemon=True)
+        self.dmx_retransmission_thread.start()
+
+    def stop_dmx_retransmission(self):
+        self.dmx_retransmission_stop.set()
+        if self.dmx_retransmission_thread:
+            self.dmx_retransmission_thread.join(timeout=2)
+
+    def update_dmx_retransmission_settings(self, enabled, interval):
+        self.dmx_retransmission_settings['enabled'] = enabled
+        self.dmx_retransmission_settings['interval'] = interval
+        self.config_manager.settings['dmx_retransmission'] = self.dmx_retransmission_settings
+        self.config_manager.save_settings()
+        if enabled:
+            self.start_dmx_retransmission()
+        else:
+            self.stop_dmx_retransmission()
 
     def run(self):
         """Run the MQTT DMX sequencer"""
