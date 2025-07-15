@@ -35,6 +35,9 @@ class DMXConsole {
         this.loadAutostartConfig();
         this.loadFallbackConfig();
         
+        // Setup fallback delay event listener after settings are loaded
+        this.setupFallbackDelayListener();
+        
         // Update time every second
         setInterval(() => this.updateTime(), 1000);
         
@@ -106,15 +109,27 @@ class DMXConsole {
             this.generateFaders();
             this.saveSettings();
         });
+    }
 
-        // Fallback delay setting
-        document.getElementById('fallback-delay').addEventListener('change', async (e) => {
-            this.saveSettings();
-            // Also save to backend
-            await this.saveFallbackDelayToBackend();
-        });
+    setupFallbackDelayListener() {
+        const fallbackDelayInput = document.getElementById('fallback-delay');
+        if (fallbackDelayInput) {
+            // Remove any existing listeners to avoid duplicates
+            fallbackDelayInput.removeEventListener('input', this.handleFallbackDelayChange);
+            fallbackDelayInput.removeEventListener('change', this.handleFallbackDelayChange);
+            
+            // Add new listeners for both input and change events
+            fallbackDelayInput.addEventListener('input', this.handleFallbackDelayChange.bind(this));
+            fallbackDelayInput.addEventListener('change', this.handleFallbackDelayChange.bind(this));
+        } else {
+            console.error('Fallback delay input element not found');
+        }
+    }
 
-
+    async handleFallbackDelayChange(e) {
+        this.saveSettings();
+        // Also save to backend
+        await this.saveFallbackDelayToBackend();
     }
 
     switchPanel(panelName) {

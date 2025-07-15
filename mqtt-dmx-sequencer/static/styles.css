@@ -282,6 +282,16 @@ body {
     font-size: 10px;
 }
 
+.fallback-indicator {
+    color: #ffaa00;
+    font-size: 12px;
+    animation: pulse-yellow 2s infinite;
+}
+
+.fallback-indicator i {
+    font-size: 10px;
+}
+
 .scene-card.autostart-active, .sequence-card.autostart-active {
     border-color: #ff4444;
     box-shadow: 0 0 10px rgba(255, 68, 68, 0.3);
@@ -289,6 +299,15 @@ body {
 
 .scene-card.autostart-active h4, .sequence-card.autostart-active h4 {
     color: #ff4444;
+}
+
+.scene-card.fallback-active, .sequence-card.fallback-active {
+    border-color: #ffaa00;
+    box-shadow: 0 0 10px rgba(255, 170, 0, 0.3);
+}
+
+.scene-card.fallback-active h4, .sequence-card.fallback-active h4 {
+    color: #ffaa00;
 }
 
 .card-actions {
@@ -373,6 +392,18 @@ body {
     }
     100% {
         box-shadow: 0 0 0 0 rgba(0, 170, 68, 0);
+    }
+}
+
+@keyframes pulse-yellow {
+    0% {
+        box-shadow: 0 0 0 0 rgba(255, 170, 0, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(255, 170, 0, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(255, 170, 0, 0);
     }
 }
 
