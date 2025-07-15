@@ -32,10 +32,15 @@ class MQTTDMXSequencer:
         self.mqtt_reconnect_attempts = 0
         self.max_mqtt_reconnect_attempts = 3
         
-        # Sequence playback state
+        # Enhanced playback state management
         self.current_sequence_playback = None
         self.current_step_index = 0
         self.current_step_data = None
+        self.current_scene_playback = None
+        self.playback_start_time = None
+        self.playback_paused = False
+        self.playback_pause_time = None
+        self.total_pause_time = 0
         
         # MQTT channel update tracking
         self.last_mqtt_channel_update = None
@@ -53,29 +58,28 @@ class MQTTDMXSequencer:
         # Web server settings from config or command line
         web_config = self.config_manager.get_web_server_config()
         self.enable_web_server = enable_web_server if enable_web_server is not None else web_config.get('enabled', True)
-        self.web_port = web_port if web_port is not None else web_config.get('port', 5000)
+        self.web_port = web_port if web_port is not None else web_config.get('port', 5001)
         self.web_host = web_config.get('host', '0.0.0.0')
         self.web_debug = web_config.get('debug', False)
         
-        # Only enable if Flask is available
-        self.enable_web_server = self.enable_web_server and FLASK_AVAILABLE
-        self.flask_app = None
-        self.web_thread = None
+        # Shutdown flag
+        self.shutdown_requested = False
         
-        # Setup DMX senders from configuration
+        # Setup signal handlers for graceful shutdown
+        signal.signal(signal.SIGINT, self.signal_handler)
+        signal.signal(signal.SIGTERM, self.signal_handler)
+        
+        # Setup DMX senders
         self.setup_dmx_senders()
         
-        # Connect to MQTT
+        # Setup MQTT connection
         self.connect_mqtt()
         
         # Setup web server if enabled
-        if self.enable_web_server:
+        if self.enable_web_server and FLASK_AVAILABLE:
             self.setup_web_server()
-        
-        # Setup signal handlers for graceful shutdown
-        self.shutdown_requested = False
-        signal.signal(signal.SIGINT, self.signal_handler)
-        signal.signal(signal.SIGTERM, self.signal_handler)
+        elif self.enable_web_server and not FLASK_AVAILABLE:
+            print("Warning: Web server requested but Flask not available")
 
     def load_config(self, path):
         print(f"Loading config from: {path}")
@@ -950,12 +954,48 @@ class MQTTDMXSequencer:
             """Get current playback status"""
             try:
                 status = {
-                    'is_playing': self.current_sequence_playback is not None,
-                    'current_step': self.current_step_index,
-                    'total_steps': self.current_sequence_playback['total_steps'] if self.current_sequence_playback else 0,
-                    'current_step_data': self.current_step_data,
-                    'loop': self.current_sequence_playback['loop'] if self.current_sequence_playback else False
+                    "is_playing": False,
+                    "current_scene": None,
+                    "current_sequence": None,
+                    "current_step": 0,
+                    "total_steps": 0,
+                    "step_progress": 0,
+                    "elapsed_time": 0,
+                    "total_duration": 0,
+                    "playback_paused": False,
+                    "step_data": None
                 }
+                
+                # Calculate elapsed time
+                if self.playback_start_time and not self.playback_paused:
+                    elapsed_time = time.time() - self.playback_start_time - self.total_pause_time
+                elif self.playback_start_time and self.playback_paused:
+                    elapsed_time = self.playback_pause_time - self.playback_start_time - self.total_pause_time
+                else:
+                    elapsed_time = 0
+                
+                if self.current_sequence_playback:
+                    status["is_playing"] = True
+                    status["current_sequence"] = self.current_sequence_playback.get('sequence_name', 'Unknown')
+                    status["current_step"] = self.current_step_index + 1
+                    status["total_steps"] = len(self.current_sequence_playback.get('sequence', []))
+                    status["playback_paused"] = self.playback_paused
+                    status["elapsed_time"] = elapsed_time
+                    
+                    if self.current_step_data:
+                        status["step_data"] = {
+                            "scene_name": self.current_step_data.get('scene_name', 'Unknown'),
+                            "duration": self.current_step_data.get('duration', 0),
+                            "progress": self.current_step_data.get('progress', 0)
+                        }
+                        status["step_progress"] = self.current_step_data.get('progress', 0)
+                        status["total_duration"] = self.current_step_data.get('total_duration', 0)
+                
+                elif self.current_scene_playback:
+                    status["is_playing"] = True
+                    status["current_scene"] = self.current_scene_playback.get('scene_name', 'Unknown')
+                    status["playback_paused"] = self.playback_paused
+                    status["elapsed_time"] = elapsed_time
                 
                 return jsonify({
                     "success": True,
@@ -1458,6 +1498,17 @@ class MQTTDMXSequencer:
         
         print(f"Playing scene: {scene_name} with transition time: {transition_time}s")
         
+        # Set scene playback state
+        self.current_scene_playback = {
+            'scene_name': scene_name,
+            'scene_data': scene_data,
+            'transition_time': transition_time
+        }
+        self.current_sequence_playback = None  # Clear sequence playback
+        self.playback_start_time = time.time()
+        self.playback_paused = False
+        self.total_pause_time = 0
+        
         def run():
             # Apply scene data to DMX channels
             channels = {}
@@ -1490,8 +1541,15 @@ class MQTTDMXSequencer:
         self.current_sequence_playback = {
             'sequence': sequence,
             'loop': loop,
-            'total_steps': len(sequence)
+            'total_steps': len(sequence),
+            'sequence_name': 'Unknown'  # Will be set by API call
         }
+        self.current_scene_playback = None  # Clear scene playback
+        self.current_step_index = 0
+        self.current_step_data = None
+        self.playback_start_time = time.time()
+        self.playback_paused = False
+        self.total_pause_time = 0
         
         def run():
             while not self.shutdown_requested and self.current_sequence_playback:  # Loop indefinitely if loop=True
@@ -1499,9 +1557,18 @@ class MQTTDMXSequencer:
                     # Check for shutdown request or stop request
                     if self.shutdown_requested or not self.current_sequence_playback:
                         break
-                    # Update current step information
+                    # Update current step information with enhanced progress tracking
                     self.current_step_index = step_index
-                    self.current_step_data = step
+                    step_start_time = time.time()
+                    
+                    # Enhanced step data with progress tracking
+                    self.current_step_data = {
+                        'scene_name': step.get('scene_name') or step.get('scene_id', 'Unknown'),
+                        'duration': step.get('duration', default_duration),
+                        'progress': 0,
+                        'start_time': step_start_time,
+                        'total_duration': step.get('duration', default_duration)
+                    }
                     
                     print(f"Playing step {step_index + 1}/{len(sequence)}")
                     
@@ -1519,11 +1586,16 @@ class MQTTDMXSequencer:
                         else:
                             print(f"Scene '{scene_name}' not found")
                         
-                        # Wait for duration, checking for shutdown or stop
-                        for _ in range(int(duration * 10)):
+                        # Wait for duration with progress tracking
+                        step_elapsed = 0
+                        while step_elapsed < duration:
                             if self.shutdown_requested or not self.current_sequence_playback:
                                 break
                             time.sleep(0.1)
+                            step_elapsed = time.time() - step_start_time
+                            # Update progress
+                            if self.current_step_data:
+                                self.current_step_data['progress'] = min(step_elapsed / duration, 1.0)
                         if self.shutdown_requested or not self.current_sequence_playback:
                             break
                     else:
@@ -1548,12 +1620,16 @@ class MQTTDMXSequencer:
                         if auto_play:
                             self.dmx_manager.send()
                         
-                        # Wait for duration, checking for stop request
-                        start_time = time.time()
-                        while time.time() - start_time < duration:
+                        # Wait for duration with progress tracking
+                        step_elapsed = 0
+                        while step_elapsed < duration:
                             if self.shutdown_requested or not self.current_sequence_playback:
                                 break
                             time.sleep(0.1)
+                            step_elapsed = time.time() - step_start_time
+                            # Update progress
+                            if self.current_step_data:
+                                self.current_step_data['progress'] = min(step_elapsed / duration, 1.0)
                         if self.shutdown_requested or not self.current_sequence_playback:
                             break
                 

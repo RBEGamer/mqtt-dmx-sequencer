@@ -183,11 +183,9 @@
       }
     ]
   },
-  "fallback": {
-    "scene_fallback": {
-      "enabled": true,
-      "scene_id": "red",
-      "delay": 5
-    }
+  "autostart": {
+    "type": "scene",
+    "id": "red",
+    "enabled": true
   }
 }
