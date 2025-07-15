@@ -845,7 +845,7 @@ class MQTTDMXSequencer:
                 if 'sequence_fallback' in data:
                     sequence_fallback_data = data['sequence_fallback']
                     enabled = sequence_fallback_data.get('enabled', False)
-                    sequence_id = sequence_fallback_data.get('sequence_id', '')
+                    scene_id = sequence_fallback_data.get('scene_id', 'blackout')
                     delay = sequence_fallback_data.get('delay', 1.0)
                     
                     # Update sequence fallback configuration
@@ -854,7 +854,7 @@ class MQTTDMXSequencer:
                     
                     self.fallback_config['sequence_fallback'] = {
                         'enabled': enabled,
-                        'sequence_id': sequence_id,
+                        'scene_id': scene_id,
                         'delay': delay
                     }
                     
@@ -864,7 +864,7 @@ class MQTTDMXSequencer:
                     
                     return jsonify({
                         "success": True,
-                        "message": f"Sequence fallback {'enabled' if enabled else 'disabled'} for sequence '{sequence_id}' with {delay}s delay"
+                        "message": f"Sequence fallback {'enabled' if enabled else 'disabled'} with scene '{scene_id}' and {delay}s delay"
                     })
                 
                 # Handle sequence fallback configuration (existing logic)
@@ -1081,7 +1081,17 @@ class MQTTDMXSequencer:
             self.current_autostart = None
 
     def trigger_fallback(self):
-        """Trigger the fallback scene/sequence"""
+        """Trigger the fallback scene/sequence (legacy support)"""
+        # Check if we have the new fallback configuration structure
+        scene_fallback_config = self.fallback_config.get('scene_fallback', {})
+        sequence_fallback_config = self.fallback_config.get('sequence_fallback', {})
+        
+        # If we have new fallback configs, use those instead
+        if scene_fallback_config.get('enabled') or sequence_fallback_config.get('enabled'):
+            print("Using new fallback configuration structure")
+            return  # Let the specific trigger functions handle it
+        
+        # Legacy fallback support
         if not self.fallback_config.get('enabled'):
             return
             
@@ -1092,20 +1102,20 @@ class MQTTDMXSequencer:
         if not fallback_id:
             return
             
-        print(f"Triggering fallback: {fallback_type} '{fallback_id}' after {delay}s delay")
+        print(f"Triggering legacy fallback: {fallback_type} '{fallback_id}' after {delay}s delay")
         
         def run_fallback():
             if delay > 0:
                 time.sleep(delay)
             
             if fallback_type == 'scene' and fallback_id in self.config.get('scenes', {}):
-                print(f"Playing fallback scene: {fallback_id}")
+                print(f"Playing legacy fallback scene: {fallback_id}")
                 self.play_scene(fallback_id)
             elif fallback_type == 'sequence' and fallback_id in self.config.get('sequences', {}):
-                print(f"Playing fallback sequence: {fallback_id}")
+                print(f"Playing legacy fallback sequence: {fallback_id}")
                 self.play_sequence(self.config['sequences'][fallback_id])
             else:
-                print(f"Fallback {fallback_type} '{fallback_id}' not found")
+                print(f"Legacy fallback {fallback_type} '{fallback_id}' not found")
         
         threading.Thread(target=run_fallback).start()
 
@@ -1143,8 +1153,8 @@ class MQTTDMXSequencer:
         if not sequence_fallback_config.get('enabled'):
             return
             
-        # Use a default fallback scene (blackout)
-        fallback_scene_id = 'blackout'
+        # Use the configured fallback scene from sequence fallback config
+        fallback_scene_id = sequence_fallback_config.get('scene_id', 'blackout')
         # Use global fallback delay from settings
         global_delay = self.config_manager.get_settings().get('fallback_delay', 1.0)
         delay = sequence_fallback_config.get('delay', global_delay)

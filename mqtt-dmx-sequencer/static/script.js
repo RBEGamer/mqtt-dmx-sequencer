@@ -1561,7 +1561,7 @@ class DMXConsole {
                 body: JSON.stringify({
                     sequence_fallback: {
                         enabled: enabled,
-                        sequence_id: sequenceId,
+                        scene_id: 'blackout', // Sequence fallback always triggers a scene (default: blackout)
                         delay: delay
                     }
                 })
@@ -1569,7 +1569,7 @@ class DMXConsole {
             
             if (response.ok) {
                 await this.loadFallbackConfig();
-                this.showNotification(`Sequence fallback ${enabled ? 'enabled' : 'disabled'} for sequence '${sequenceId}' with ${delay}s delay`, 'success');
+                this.showNotification(`Sequence fallback ${enabled ? 'enabled' : 'disabled'} with ${delay}s delay`, 'success');
             } else {
                 throw new Error('Failed to set sequence fallback');
             }
