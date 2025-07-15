@@ -1,0 +1,60 @@
+{
+  "mqtt": {
+    "url": "mqtt://192.168.178.75",
+    "port": 1883,
+    "username": "",
+    "password": "",
+    "client_id": "mqtt-dmx-sequencer",
+    "keepalive": 60,
+    "clean_session": true
+  },
+  "dmx": {
+    "default_configs": [
+      {
+        "type": "e131",
+        "name": "main",
+        "target": "192.168.178.75",
+        "universe": 1,
+        "fps": 40
+      }
+    ],
+    "artnet": {
+      "default_port": 6454,
+      "refresh_rate": 0.1
+    },
+    "e131": {
+      "default_fps": 40,
+      "multicast": true
+    }
+  },
+  "logging": {
+    "level": "info",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  },
+  "scenes": {
+    "default_transition_time": 0.0,
+    "auto_send": true
+  },
+  "sequences": {
+    "default_duration": 1.0,
+    "auto_play": true
+  },
+  "web_server": {
+    "enabled": true,
+    "port": 5000,
+    "host": "0.0.0.0",
+    "debug": false
+  },
+  "frontend_mqtt_passthrough": true,
+  "fallback": {
+    "enabled": false,
+    "type": "scene",
+    "id": "blackout",
+    "delay": 0.0,
+    "scene_fallback": {
+      "enabled": false,
+      "scene_id": "blackout",
+      "delay": 1.0
+    }
+  }
+} 

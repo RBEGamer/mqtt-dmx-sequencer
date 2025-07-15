@@ -45,6 +45,10 @@ class MQTTDMXSequencer:
         self.current_autostart = None
         self.autostart_timer = None
         
+        # Fallback management
+        self.fallback_config = self.config.get('fallback', {})
+        self.fallback_timer = None
+        
         # Web server settings from config or command line
         web_config = self.config_manager.get_web_server_config()
         self.enable_web_server = enable_web_server if enable_web_server is not None else web_config.get('enabled', True)
@@ -762,6 +766,124 @@ class MQTTDMXSequencer:
                     "error": str(e)
                 }), 500
 
+        @self.flask_app.route('/api/fallback', methods=['GET'])
+        def get_fallback():
+            """Get current fallback configuration"""
+            try:
+                return jsonify({
+                    "success": True,
+                    "data": {
+                        "current": self.current_autostart, # Fallback uses autostart logic
+                        "config": self.fallback_config
+                    }
+                })
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/fallback', methods=['POST'])
+        def set_fallback():
+            """Set fallback configuration"""
+            try:
+                data = request.get_json()
+                
+                # Handle scene fallback configuration
+                if 'scene_fallback' in data:
+                    scene_fallback_data = data['scene_fallback']
+                    enabled = scene_fallback_data.get('enabled', False)
+                    scene_id = scene_fallback_data.get('scene_id', 'blackout')
+                    delay = scene_fallback_data.get('delay', 1.0)
+                    
+                    # Update scene fallback configuration
+                    if 'scene_fallback' not in self.fallback_config:
+                        self.fallback_config['scene_fallback'] = {}
+                    
+                    self.fallback_config['scene_fallback'] = {
+                        'enabled': enabled,
+                        'scene_id': scene_id,
+                        'delay': delay
+                    }
+                    
+                    # Save to config
+                    self.config['fallback'] = self.fallback_config
+                    self.save_config()
+                    
+                    return jsonify({
+                        "success": True,
+                        "message": f"Scene fallback {'enabled' if enabled else 'disabled'} for scene '{scene_id}' with {delay}s delay"
+                    })
+                
+                # Handle sequence fallback configuration (existing logic)
+                if not data or 'type' not in data or 'id' not in data:
+                    return jsonify({
+                        "success": False,
+                        "error": "Missing required fields: type and id"
+                    }), 400
+                
+                fallback_type = data['type']  # 'scene' or 'sequence'
+                fallback_id = data['id']
+                enabled = data.get('enabled', True)
+                
+                if enabled:
+                    # Disable any existing autostart
+                    self.disable_current_autostart()
+                    
+                    # Set new fallback
+                    self.fallback_config = {
+                        'type': fallback_type,
+                        'id': fallback_id,
+                        'enabled': True
+                    }
+                    self.current_autostart = fallback_id # Fallback uses autostart logic
+                    
+                    # Start the fallback
+                    self.start_autostart() # Use the existing autostart logic
+                else:
+                    # Disable fallback
+                    self.disable_current_autostart()
+                    self.fallback_config = {}
+                    self.current_autostart = None
+                
+                # Save to config
+                self.config['fallback'] = self.fallback_config
+                self.save_config()
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Fallback {'enabled' if enabled else 'disabled'} for {fallback_type} '{fallback_id}'"
+                })
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/fallback', methods=['DELETE'])
+        def disable_fallback():
+            """Disable current fallback"""
+            try:
+                self.disable_current_autostart()
+                self.fallback_config = {}
+                self.current_autostart = None
+                
+                # Save to config
+                self.config['fallback'] = self.fallback_config
+                self.save_config()
+                
+                return jsonify({
+                    "success": True,
+                    "message": "Fallback disabled"
+                })
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
         @self.flask_app.route('/api/playback/status', methods=['GET'])
         def get_playback_status():
             """Get current playback status"""
@@ -882,6 +1004,61 @@ class MQTTDMXSequencer:
         if self.current_autostart:
             print(f"Disabled autostart: {self.current_autostart}")
             self.current_autostart = None
+
+    def trigger_fallback(self):
+        """Trigger the fallback scene/sequence"""
+        if not self.fallback_config.get('enabled'):
+            return
+            
+        fallback_type = self.fallback_config.get('type')
+        fallback_id = self.fallback_config.get('id')
+        delay = self.fallback_config.get('delay', 0.0)
+        
+        if not fallback_id:
+            return
+            
+        print(f"Triggering fallback: {fallback_type} '{fallback_id}' after {delay}s delay")
+        
+        def run_fallback():
+            if delay > 0:
+                time.sleep(delay)
+            
+            if fallback_type == 'scene' and fallback_id in self.config.get('scenes', {}):
+                print(f"Playing fallback scene: {fallback_id}")
+                self.play_scene(fallback_id)
+            elif fallback_type == 'sequence' and fallback_id in self.config.get('sequences', {}):
+                print(f"Playing fallback sequence: {fallback_id}")
+                self.play_sequence(self.config['sequences'][fallback_id])
+            else:
+                print(f"Fallback {fallback_type} '{fallback_id}' not found")
+        
+        threading.Thread(target=run_fallback).start()
+
+    def trigger_scene_fallback(self, scene_name):
+        """Trigger the scene fallback after a scene is played"""
+        scene_fallback_config = self.fallback_config.get('scene_fallback', {})
+        if not scene_fallback_config.get('enabled'):
+            return
+            
+        fallback_scene_id = scene_fallback_config.get('scene_id')
+        delay = scene_fallback_config.get('delay', 1.0)
+        
+        if not fallback_scene_id:
+            return
+            
+        print(f"Triggering scene fallback: scene '{fallback_scene_id}' after {delay}s delay")
+        
+        def run_scene_fallback():
+            if delay > 0:
+                time.sleep(delay)
+            
+            if fallback_scene_id in self.config.get('scenes', {}):
+                print(f"Playing scene fallback: {fallback_scene_id}")
+                self.play_scene(fallback_scene_id)
+            else:
+                print(f"Scene fallback '{fallback_scene_id}' not found")
+        
+        threading.Thread(target=run_scene_fallback).start()
 
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
@@ -1154,6 +1331,9 @@ class MQTTDMXSequencer:
                 self.dmx_manager.send()
             print(f"Scene '{scene_name}' applied")
             
+            # Trigger scene fallback after delay
+            self.trigger_scene_fallback(scene_name)
+            
         threading.Thread(target=run).start()
 
     def play_sequence(self, sequence, loop=False):
@@ -1246,6 +1426,10 @@ class MQTTDMXSequencer:
             self.current_step_index = 0
             self.current_step_data = None
             print("Sequence finished.")
+            
+            # Trigger fallback for non-looping sequences
+            if not loop:
+                self.trigger_fallback()
         
         threading.Thread(target=run).start()
 

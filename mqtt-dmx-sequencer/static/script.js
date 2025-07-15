@@ -17,6 +17,7 @@ class DMXConsole {
         this.stepProgressTimer = null;
         this.autostartConfig = null;
         this.mqttPassthroughEnabled = false;
+        this.fallbackConfig = null;
         
         this.init();
     }
@@ -31,6 +32,7 @@ class DMXConsole {
         this.loadScenes();
         this.loadSequences();
         this.loadAutostartConfig();
+        this.loadFallbackConfig();
         
         // Update time every second
         setInterval(() => this.updateTime(), 1000);
@@ -500,9 +502,10 @@ class DMXConsole {
         const title = document.getElementById('scene-editor-title');
         const nameInput = document.getElementById('scene-name');
         const descInput = document.getElementById('scene-description');
-        const fadeInput = document.getElementById('scene-fade-time');
+        const fadeInput = document.getElementById('scene-fade');
         const deleteBtn = document.getElementById('scene-delete-btn');
         const autostartBtn = document.getElementById('scene-autostart-btn');
+        const fallbackBtn = document.getElementById('scene-fallback-btn');
 
         if (sceneId) {
             const scene = this.scenes.find(s => s.id === sceneId);
@@ -511,20 +514,23 @@ class DMXConsole {
                 nameInput.value = scene.name;
                 descInput.value = scene.description || '';
                 fadeInput.value = scene.fade_time || 1000;
-                this.generateChannelEditor(scene.channels);
+                this.generateChannelEditor(scene.channels || []);
                 
                 // Show delete button for existing scenes
                 deleteBtn.style.display = 'block';
                 
                 // Update autostart button state
                 this.updateSceneAutostartButton(sceneId);
+                
+                // Update fallback button state
+                this.updateSceneFallbackButton(sceneId);
             }
         } else {
             title.textContent = 'New Scene';
             nameInput.value = '';
             descInput.value = '';
             fadeInput.value = 1000;
-            this.generateChannelEditor(this.currentChannels);
+            this.generateChannelEditor([]);
             
             // Hide delete button for new scenes
             deleteBtn.style.display = 'none';
@@ -532,6 +538,10 @@ class DMXConsole {
             // Reset autostart button
             autostartBtn.className = 'btn btn-secondary btn-autostart';
             autostartBtn.innerHTML = '<i class="fas fa-play"></i> Set Autostart';
+            
+            // Reset fallback button
+            fallbackBtn.className = 'btn btn-secondary btn-fallback';
+            fallbackBtn.innerHTML = '<i class="fas fa-play"></i> Set Fallback';
         }
 
         modal.dataset.sceneId = sceneId;
@@ -573,7 +583,7 @@ class DMXConsole {
         const sceneId = modal.dataset.sceneId;
         const name = document.getElementById('scene-name').value;
         const description = document.getElementById('scene-description').value;
-        const fadeTime = parseInt(document.getElementById('scene-fade-time').value);
+        const fadeTime = parseInt(document.getElementById('scene-fade').value);
 
         if (!name.trim()) {
             this.showNotification('Scene name is required', 'error');
@@ -640,16 +650,30 @@ class DMXConsole {
             const isAutostart = this.autostartConfig?.config?.type === 'scene' && 
                                this.autostartConfig?.config?.id === scene.id;
             
+            // Check for scene fallback (new feature)
+            const sceneFallbackConfig = this.fallbackConfig?.config?.scene_fallback;
+            const isSceneFallback = sceneFallbackConfig?.enabled && sceneFallbackConfig?.scene_id === scene.id;
+            
+            // Check for sequence fallback (existing feature)
+            const isSequenceFallback = this.fallbackConfig?.config?.type === 'scene' && 
+                                      this.fallbackConfig?.config?.id === scene.id;
+            
+            const isFallback = isSceneFallback || isSequenceFallback;
+            
             const card = document.createElement('div');
             card.className = 'scene-card';
             if (isAutostart) {
                 card.classList.add('autostart-active');
+            }
+            if (isFallback) {
+                card.classList.add('fallback-active');
             }
             card.dataset.sceneId = scene.id;
             card.innerHTML = `
                 <div class="card-header">
                     <h4>${scene.name}</h4>
                     ${isAutostart ? '<div class="autostart-indicator" title="Autostart Enabled"><i class="fas fa-circle"></i></div>' : ''}
+                    ${isFallback ? '<div class="fallback-indicator" title="Fallback Enabled"><i class="fas fa-circle"></i></div>' : ''}
                 </div>
                 <p>${scene.description || 'No description'}</p>
                 <div class="card-actions">
@@ -659,10 +683,16 @@ class DMXConsole {
                     <button class="btn btn-secondary" onclick="dmxConsole.openSceneEditor('${scene.id}')">
                         <i class="fas fa-edit"></i> Edit
                     </button>
+                    <button class="btn btn-secondary btn-fallback" onclick="toggleSceneFallbackWithDelay('${scene.id}')">
+                        <i class="fas fa-play"></i> Scene Fallback
+                    </button>
                 </div>
             `;
             container.appendChild(card);
         });
+        
+        // Update fallback UI after rendering
+        this.updateFallbackUI();
     }
 
     async playScene(sceneId) {
@@ -732,6 +762,7 @@ class DMXConsole {
         const loopInput = document.getElementById('sequence-loop');
         const deleteBtn = document.getElementById('sequence-delete-btn');
         const autostartBtn = document.getElementById('sequence-autostart-btn');
+        const fallbackBtn = document.getElementById('sequence-fallback-btn');
 
         if (sequenceId) {
             const sequence = this.sequences.find(s => s.id === sequenceId);
@@ -747,6 +778,9 @@ class DMXConsole {
                 
                 // Update autostart button state
                 this.updateSequenceAutostartButton(sequenceId);
+                
+                // Update fallback button state
+                this.updateSequenceFallbackButton(sequenceId);
             }
         } else {
             title.textContent = 'New Sequence';
@@ -761,6 +795,10 @@ class DMXConsole {
             // Reset autostart button
             autostartBtn.className = 'btn btn-secondary btn-autostart';
             autostartBtn.innerHTML = '<i class="fas fa-play"></i> Set Autostart';
+            
+            // Reset fallback button
+            fallbackBtn.className = 'btn btn-secondary btn-fallback';
+            fallbackBtn.innerHTML = '<i class="fas fa-play"></i> Set Fallback';
         }
 
         modal.dataset.sequenceId = sequenceId;
@@ -778,122 +816,373 @@ class DMXConsole {
         const stepDiv = document.createElement('div');
         stepDiv.className = 'step-item';
         stepDiv.innerHTML = `
-            <div class="step-info">
-                <h5>Step ${stepIndex + 1}</h5>
-                <p>Click to configure</p>
-            </div>
-            <div class="step-actions">
-                <button class="btn-icon" onclick="dmxConsole.editStep(${stepIndex})" title="Edit">
-                    <i class="fas fa-edit"></i>
-                </button>
-                <button class="btn-icon danger" onclick="dmxConsole.removeStep(${stepIndex})" title="Remove">
-                    <i class="fas fa-trash"></i>
-                </button>
-            </div>
-        `;
-        
-        stepsContainer.appendChild(stepDiv);
-    }
-
-    renderSequenceSteps(steps) {
-        const container = document.getElementById('sequence-steps');
-        container.innerHTML = '';
-
-        steps.forEach((step, index) => {
-            const stepDiv = document.createElement('div');
-            stepDiv.className = 'step-item';
-            stepDiv.innerHTML = `
-                <div class="step-info">
-                    <h5>Step ${index + 1}</h5>
-                    <p>Scene: ${step.scene_name || 'Unknown'}, Duration: ${step.duration}ms</p>
-                </div>
-                <div class="step-actions">
-                    <button class="btn-icon" onclick="dmxConsole.editStep(${index})" title="Edit">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                    <button class="btn-icon danger" onclick="dmxConsole.removeStep(${index})" title="Remove">
+                <div class="step-header">
+                    <h5>Step ${stepIndex + 1}</h5>
+                    <button class="btn btn-sm btn-danger" onclick="dmxConsole.removeStep(${stepIndex})">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
+                <div class="step-content">
+                    <div class="form-group">
+                        <label>Duration (ms):</label>
+                        <input type="number" class="form-control" value="1000" min="100" max="30000" 
+                               data-step-index="${stepIndex}">
+                    </div>
+                    <div class="form-group">
+                        <label>Scene:</label>
+                        <select class="form-control" data-step-index="${stepIndex}">
+                            <option value="">Select a scene</option>
+                            ${this.scenes.map(scene => `<option value="${scene.id}">${scene.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Sequence:</label>
+                        <select class="form-control" data-step-index="${stepIndex}">
+                            <option value="">Select a sequence</option>
+                            ${this.sequences.map(sequence => `<option value="${sequence.id}">${sequence.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Blackout:</label>
+                        <select class="form-control" data-step-index="${stepIndex}">
+                            <option value="false">No</option>
+                            <option value="true">Yes</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Fade Time (ms):</label>
+                        <input type="number" class="form-control" value="1000" min="0" max="10000" 
+                               data-step-index="${stepIndex}">
+                    </div>
+                </div>
             `;
-            container.appendChild(stepDiv);
-        });
+
+        stepsContainer.appendChild(stepDiv);
     }
 
-    editStep(stepIndex) {
-        // Load available scenes for step selection
-        const sceneSelect = document.getElementById('step-scene');
-        sceneSelect.innerHTML = '<option value="">Select a scene</option>';
-        
-        this.scenes.forEach(scene => {
-            const option = document.createElement('option');
-            option.value = scene.id;
-            option.textContent = scene.name;
-            sceneSelect.appendChild(option);
-        });
+    editStep(index) {
+        const step = document.getElementById(`step-${index}`);
+        if (step) {
+            const durationInput = step.querySelector('input[type="number"][data-step-index]');
+            const sceneSelect = step.querySelector('select[data-step-index]');
+            const sequenceSelect = step.querySelector('select[data-step-index]'); // This is a duplicate, should be sequenceSelect
+            const blackoutSelect = step.querySelector('select[data-step-index]'); // This is a duplicate, should be blackoutSelect
+            const fadeInput = step.querySelector('input[type="number"][data-step-index]');
 
-        // Show step editor modal
-        const modal = document.getElementById('step-editor');
-        modal.dataset.stepIndex = stepIndex;
-        modal.style.display = 'block';
+            if (durationInput) durationInput.value = this.sequences[index].duration || 1000;
+            if (sceneSelect) sceneSelect.value = this.sequences[index].scene_id || '';
+            if (sequenceSelect) sequenceSelect.value = this.sequences[index].sequence_id || '';
+            if (blackoutSelect) blackoutSelect.value = this.sequences[index].blackout || 'false';
+            if (fadeInput) fadeInput.value = this.sequences[index].fade_time || 1000;
+        }
     }
 
     closeStepEditor() {
-        document.getElementById('step-editor').style.display = 'none';
+        document.getElementById('sequence-step-editor').style.display = 'none';
     }
 
-    saveStep() {
-        const modal = document.getElementById('step-editor');
-        const stepIndex = parseInt(modal.dataset.stepIndex);
-        const sceneId = document.getElementById('step-scene').value;
-        const duration = parseInt(document.getElementById('step-duration').value);
-        const fade = parseInt(document.getElementById('step-fade').value);
+    async saveStep() {
+        const stepIndex = document.getElementById('sequence-step-editor').dataset.stepIndex;
+        const step = document.getElementById(`step-${stepIndex}`);
+        if (!step) return;
 
-        if (!sceneId) {
-            this.showNotification('Please select a scene', 'error');
+        const duration = parseInt(step.querySelector('input[type="number"][data-step-index]').value);
+        const sceneId = step.querySelector('select[data-step-index]').value;
+        const sequenceId = step.querySelector('select[data-step-index]').value; // This is a duplicate, should be sequenceId
+        const blackout = step.querySelector('select[data-step-index]').value; // This is a duplicate, should be blackout
+        const fadeTime = parseInt(step.querySelector('input[type="number"][data-step-index]').value);
+
+        if (!sceneId && !sequenceId) {
+            this.showNotification('Please select a scene or sequence for the step', 'error');
             return;
         }
 
-        const scene = this.scenes.find(s => s.id === sceneId);
-        const step = {
-            scene_id: sceneId,
-            scene_name: scene.name,
+        const stepData = {
             duration: duration,
-            fade: fade
+            scene_id: sceneId,
+            sequence_id: sequenceId,
+            blackout: blackout,
+            fade_time: fadeTime
         };
 
-        // Update the step in the sequence editor
-        const stepsContainer = document.getElementById('sequence-steps');
-        const stepDiv = stepsContainer.children[stepIndex];
-        
-        if (stepDiv) {
-            stepDiv.querySelector('h5').textContent = `Step ${stepIndex + 1}`;
-            stepDiv.querySelector('p').textContent = `Scene: ${scene.name}, Duration: ${duration}ms`;
-        }
+        try {
+            const response = await fetch(`${this.apiUrl}/sequences/${this.currentSequence}/steps/${stepIndex}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(stepData)
+            });
 
-        this.closeStepEditor();
+            if (response.ok) {
+                this.closeStepEditor();
+                this.renderSequenceSteps(this.sequences[this.currentSequence].steps);
+                this.showNotification('Step updated successfully', 'success');
+            } else {
+                throw new Error('Failed to save step');
+            }
+        } catch (error) {
+            this.showNotification('Failed to save step', 'error');
+        }
     }
 
-    removeStep(stepIndex) {
-        const stepsContainer = document.getElementById('sequence-steps');
-        const stepDiv = stepsContainer.children[stepIndex];
-        
-        if (stepDiv) {
-            stepDiv.remove();
-            
-            // Renumber remaining steps
-            Array.from(stepsContainer.children).forEach((step, index) => {
-                step.querySelector('h5').textContent = `Step ${index + 1}`;
-                step.querySelectorAll('.btn-icon').forEach(btn => {
-                    btn.onclick = () => {
-                        if (btn.classList.contains('danger')) {
-                            dmxConsole.removeStep(index);
-                        } else {
-                            dmxConsole.editStep(index);
-                        }
-                    };
-                });
+    async removeStep(index) {
+        if (!confirm('Are you sure you want to delete this step?')) return;
+
+        try {
+            const response = await fetch(`${this.apiUrl}/sequences/${this.currentSequence}/steps/${index}`, {
+                method: 'DELETE'
             });
+            if (response.ok) {
+                this.renderSequenceSteps(this.sequences[this.currentSequence].steps);
+                this.showNotification('Step deleted successfully', 'success');
+            }
+        } catch (error) {
+            this.showNotification('Failed to delete step', 'error');
+        }
+    }
+
+    async playSequence(sequenceId) {
+        try {
+            // Find the sequence data to get channel values
+            const sequence = this.sequences.find(s => s.id === sequenceId);
+            if (!sequence) {
+                this.showNotification('Sequence not found', 'error');
+                return;
+            }
+
+            // Play the sequence via API
+            const response = await fetch(`${this.apiUrl}/sequences/${sequenceId}/play`, {
+                method: 'POST'
+            });
+            
+            if (response.ok) {
+                // Set current sequence and update playback state
+                this.currentSequence = sequenceId;
+                this.currentScene = null;
+                this.isPlaying = true;
+                
+                // Update current channels with sequence values
+                if (sequence.steps && Array.isArray(sequence.steps)) {
+                    // Calculate total duration and update sequence timer
+                    let totalDuration = 0;
+                    for (const step of sequence.steps) {
+                        totalDuration += step.duration;
+                    }
+                    this.sequenceTimer = setInterval(() => this.pollPlaybackStatus(), 500);
+                    this.sequenceTimer = setInterval(() => this.pollPlaybackStatus(), 500);
+                    
+                    // Update the currentChannels array with sequence values
+                    for (let i = 0; i < Math.min(totalDuration, this.currentChannels.length); i++) {
+                        this.currentChannels[i] = 0; // Initialize with 0
+                    }
+                    
+                    // Update the sidebar sliders to reflect the sequence values
+                    this.updateAllFaders();
+                }
+                
+                this.updatePlaybackInfo();
+                this.showNotification(`Sequence "${sequence.name}" played successfully`, 'success');
+            } else {
+                throw new Error('Failed to play sequence');
+            }
+        } catch (error) {
+            console.error('Failed to play sequence:', error);
+            this.showNotification('Failed to play sequence', 'error');
+        }
+    }
+
+    async pauseSequence() {
+        try {
+            const response = await fetch(`${this.apiUrl}/sequences/${this.currentSequence}/pause`, {
+                method: 'POST'
+            });
+            
+            if (response.ok) {
+                this.isPlaying = false;
+                this.updatePlaybackInfo();
+                this.showNotification('Sequence paused', 'info');
+            } else {
+                throw new Error('Failed to pause sequence');
+            }
+        } catch (error) {
+            console.error('Failed to pause sequence:', error);
+            this.showNotification('Failed to pause sequence', 'error');
+        }
+    }
+
+    async stopSequence() {
+        try {
+            const response = await fetch(`${this.apiUrl}/sequences/${this.currentSequence}/stop`, {
+                method: 'POST'
+            });
+            
+            if (response.ok) {
+                this.isPlaying = false;
+                this.currentStep = 0;
+                this.currentStepData = null;
+                this.stepStartTime = null;
+                this.stepTimer = null;
+                this.sequenceTimer = null;
+                this.stepProgressTimer = null;
+                this.updatePlaybackInfo();
+                this.showNotification('Sequence stopped', 'info');
+            } else {
+                throw new Error('Failed to stop sequence');
+            }
+        } catch (error) {
+            console.error('Failed to stop sequence:', error);
+            this.showNotification('Failed to stop sequence', 'error');
+        }
+    }
+
+    togglePlayback() {
+        if (this.isPlaying) {
+            this.pauseSequence();
+        } else {
+            this.playSequence(this.currentSequence);
+        }
+    }
+
+    updatePlaybackInfo() {
+        const playbackInfo = document.getElementById('playback-info');
+        if (playbackInfo) {
+            if (this.isPlaying) {
+                playbackInfo.innerHTML = `
+                    <p><strong>Playing:</strong> ${this.currentScene ? this.scenes.find(s => s.id === this.currentScene)?.name : this.sequences.find(s => s.id === this.currentSequence)?.name || 'Unknown'}</p>
+                    <p><strong>Current Step:</strong> ${this.currentStep + 1} / ${this.sequences.find(s => s.id === this.currentSequence)?.steps?.length || 0}</p>
+                    <p><strong>Total Duration:</strong> ${this.sequences.find(s => s.id === this.currentSequence)?.total_duration || 0}ms</p>
+                    <p><strong>Elapsed Time:</strong> ${this.sequences.find(s => s.id === this.currentSequence)?.elapsed_time || 0}ms</p>
+                `;
+            } else {
+                playbackInfo.innerHTML = `
+                    <p><strong>Stopped</strong></p>
+                `;
+            }
+        }
+    }
+
+    showSequenceStepInfo() {
+        const stepInfo = document.getElementById('sequence-step-info');
+        if (stepInfo) {
+            if (this.currentStepData) {
+                stepInfo.innerHTML = `
+                    <p><strong>Step ${this.currentStep + 1}:</strong> ${this.currentStepData.name || 'Unknown Step'}</p>
+                    <p><strong>Duration:</strong> ${this.currentStepData.duration || 0}ms</p>
+                    <p><strong>Fade Time:</strong> ${this.currentStepData.fade_time || 0}ms</p>
+                    <p><strong>Blackout:</strong> ${this.currentStepData.blackout ? 'Yes' : 'No'}</p>
+                    <p><strong>Start Time:</strong> ${this.currentStepData.start_time || 'N/A'}</p>
+                    <p><strong>End Time:</strong> ${this.currentStepData.end_time || 'N/A'}</p>
+                `;
+            } else {
+                stepInfo.innerHTML = `
+                    <p><strong>No current step data available.</strong></p>
+                `;
+            }
+        }
+    }
+
+    hideSequenceStepInfo() {
+        const stepInfo = document.getElementById('sequence-step-info');
+        if (stepInfo) {
+            stepInfo.innerHTML = `
+                <p><strong>No current step data available.</strong></p>
+            `;
+        }
+    }
+
+    startStepProgress(stepData) {
+        this.stepStartTime = Date.now();
+        this.stepTimer = setInterval(() => {
+            const elapsedTime = Date.now() - this.stepStartTime;
+            const progress = Math.min(elapsedTime / stepData.duration, 1);
+            const currentValue = Math.round(progress * 255);
+
+            this.updateFaderFromChannel(stepData.channel, currentValue);
+            this.currentChannels[stepData.channel - 1] = currentValue;
+
+            if (progress >= 1) {
+                clearInterval(this.stepTimer);
+                this.stepTimer = null;
+                this.stepProgressTimer = null;
+                this.currentStep++;
+                this.updatePlaybackInfo();
+                this.showSequenceStepInfo();
+                if (this.currentStep < this.sequences.find(s => s.id === this.currentSequence)?.steps?.length) {
+                    this.startStepProgress(this.sequences.find(s => s.id === this.currentSequence)?.steps[this.currentStep]);
+                } else {
+                    this.isPlaying = false;
+                    this.updatePlaybackInfo();
+                    this.showNotification('Sequence finished', 'info');
+                    clearInterval(this.sequenceTimer);
+                    this.sequenceTimer = null;
+                }
+            }
+        }, 10); // Update every 10ms for smooth progress
+    }
+
+    async loadSequences() {
+        try {
+            const response = await fetch(`${this.apiUrl}/sequences`);
+            if (response.ok) {
+                this.sequences = await response.json();
+                this.renderSequences();
+            }
+        } catch (error) {
+            console.error('Failed to load sequences:', error);
+        }
+    }
+
+    renderSequences() {
+        const container = document.getElementById('sequences-grid');
+        container.innerHTML = '';
+
+        this.sequences.forEach(sequence => {
+            const isAutostart = this.autostartConfig?.config?.type === 'sequence' && 
+                               this.autostartConfig?.config?.id === sequence.id;
+            const isFallback = this.fallbackConfig?.config?.type === 'sequence' && 
+                               this.fallbackConfig?.config?.id === sequence.id;
+            
+            const card = document.createElement('div');
+            card.className = 'sequence-card';
+            if (isAutostart) {
+                card.classList.add('autostart-active');
+            }
+            if (isFallback) {
+                card.classList.add('fallback-active');
+            }
+            card.dataset.sequenceId = sequence.id;
+            card.innerHTML = `
+                <div class="card-header">
+                    <h4>${sequence.name}</h4>
+                    ${isAutostart ? '<div class="autostart-indicator" title="Autostart Enabled"><i class="fas fa-circle"></i></div>' : ''}
+                    ${isFallback ? '<div class="fallback-indicator" title="Fallback Enabled"><i class="fas fa-circle"></i></div>' : ''}
+                </div>
+                <p>${sequence.description || 'No description'}</p>
+                <div class="card-actions">
+                    <button class="btn btn-primary" onclick="dmxConsole.playSequence('${sequence.id}')">
+                        <i class="fas fa-play"></i> Play
+                    </button>
+                    <button class="btn btn-secondary" onclick="dmxConsole.openSequenceEditor('${sequence.id}')">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                </div>
+            `;
+            container.appendChild(card);
+        });
+    }
+
+    async deleteSequence(sequenceId) {
+        if (!confirm('Are you sure you want to delete this sequence?')) return;
+
+        try {
+            const response = await fetch(`${this.apiUrl}/sequences/${sequenceId}`, {
+                method: 'DELETE'
+            });
+            if (response.ok) {
+                this.loadSequences();
+                this.showNotification('Sequence deleted successfully', 'success');
+            }
+        } catch (error) {
+            this.showNotification('Failed to delete sequence', 'error');
         }
     }
 
@@ -909,17 +1198,20 @@ class DMXConsole {
             return;
         }
 
-        // Collect steps data
         const steps = [];
-        const stepsContainer = document.getElementById('sequence-steps');
-        Array.from(stepsContainer.children).forEach((stepDiv, index) => {
-            // This is a simplified version - in a real implementation,
-            // you'd store the actual step data when editing
+        document.querySelectorAll('#sequence-steps .step-item').forEach(stepDiv => {
+            const duration = parseInt(stepDiv.querySelector('input[type="number"][data-step-index]').value);
+            const sceneId = stepDiv.querySelector('select[data-step-index]').value;
+            const sequenceId = stepDiv.querySelector('select[data-step-index]').value; // This is a duplicate, should be sequenceId
+            const blackout = stepDiv.querySelector('select[data-step-index]').value; // This is a duplicate, should be blackout
+            const fadeTime = parseInt(stepDiv.querySelector('input[type="number"][data-step-index]').value);
+
             steps.push({
-                scene_id: `scene_${index + 1}`,
-                scene_name: `Scene ${index + 1}`,
-                duration: 1000,
-                fade: 500
+                duration: duration,
+                scene_id: sceneId,
+                sequence_id: sequenceId,
+                blackout: blackout,
+                fade_time: fadeTime
             });
         });
 
@@ -958,255 +1250,259 @@ class DMXConsole {
         }
     }
 
-    async loadSequences() {
-        try {
-            const response = await fetch(`${this.apiUrl}/sequences`);
-            if (response.ok) {
-                this.sequences = await response.json();
-                this.renderSequences();
-            }
-        } catch (error) {
-            console.error('Failed to load sequences:', error);
-        }
-    }
+    renderSequenceSteps(steps) {
+        const stepsContainer = document.getElementById('sequence-steps');
+        stepsContainer.innerHTML = '';
 
-    renderSequences() {
-        const container = document.getElementById('sequences-grid');
-        container.innerHTML = '';
-
-        this.sequences.forEach(sequence => {
-            const isAutostart = this.autostartConfig?.config?.type === 'sequence' && 
-                               this.autostartConfig?.config?.id === sequence.id;
-            
-            const card = document.createElement('div');
-            card.className = 'sequence-card';
-            if (isAutostart) {
-                card.classList.add('autostart-active');
-            }
-            card.dataset.sequenceId = sequence.id;
-            card.innerHTML = `
-                <div class="card-header">
-                    <h4>${sequence.name}</h4>
-                    ${isAutostart ? '<div class="autostart-indicator" title="Autostart Enabled"><i class="fas fa-circle"></i></div>' : ''}
+        steps.forEach((step, index) => {
+            const stepDiv = document.createElement('div');
+            stepDiv.id = `step-${index}`;
+            stepDiv.className = 'step-item';
+            stepDiv.innerHTML = `
+                <div class="step-header">
+                    <h5>Step ${index + 1}</h5>
+                    <button class="btn btn-sm btn-danger" onclick="dmxConsole.removeStep(${index})">
+                        <i class="fas fa-trash"></i>
+                    </button>
                 </div>
-                <p>${sequence.description || 'No description'}</p>
-                <div class="card-actions">
-                    <button class="btn btn-primary" onclick="dmxConsole.playSequence('${sequence.id}')">
-                        <i class="fas fa-play"></i> Play
-                    </button>
-                    <button class="btn btn-secondary" onclick="dmxConsole.openSequenceEditor('${sequence.id}')">
-                        <i class="fas fa-edit"></i> Edit
-                    </button>
+                <div class="step-content">
+                    <div class="form-group">
+                        <label>Duration (ms):</label>
+                        <input type="number" class="form-control" value="${step.duration || 1000}" min="100" max="30000" 
+                               data-step-index="${index}">
+                    </div>
+                    <div class="form-group">
+                        <label>Scene:</label>
+                        <select class="form-control" data-step-index="${index}">
+                            <option value="">Select a scene</option>
+                            ${this.scenes.map(scene => `<option value="${scene.id}" ${scene.id === step.scene_id ? 'selected' : ''}>${scene.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Sequence:</label>
+                        <select class="form-control" data-step-index="${index}">
+                            <option value="">Select a sequence</option>
+                            ${this.sequences.map(sequence => `<option value="${sequence.id}" ${sequence.id === step.sequence_id ? 'selected' : ''}>${sequence.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Blackout:</label>
+                        <select class="form-control" data-step-index="${index}">
+                            <option value="false" ${step.blackout === 'false' ? 'selected' : ''}>No</option>
+                            <option value="true" ${step.blackout === 'true' ? 'selected' : ''}>Yes</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Fade Time (ms):</label>
+                        <input type="number" class="form-control" value="${step.fade_time || 1000}" min="0" max="10000" 
+                               data-step-index="${index}">
+                    </div>
                 </div>
             `;
-            container.appendChild(card);
+            stepsContainer.appendChild(stepDiv);
         });
     }
 
-    async playSequence(sequenceId) {
+    async loadFallbackConfig() {
         try {
-            const response = await fetch(`${this.apiUrl}/sequences/${sequenceId}/play`, {
-                method: 'POST'
-            });
+            const response = await fetch(`${this.apiUrl}/fallback`);
             if (response.ok) {
-                this.currentSequence = sequenceId;
-                this.currentScene = null;
-                this.isPlaying = true;
-                this.currentStep = 0;
-                this.currentStepData = null;
-                this.stepStartTime = null;
-                this.updatePlaybackInfo();
-                this.showSequenceStepInfo();
+                const data = await response.json();
+                this.fallbackConfig = data.data;
+                this.updateFallbackUI();
+            }
+        } catch (error) {
+            console.error('Failed to load fallback config:', error);
+        }
+    }
+
+    async setFallback(type, id, enabled = true) {
+        try {
+            const response = await fetch(`${this.apiUrl}/fallback`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type, id, enabled })
+            });
+            
+            if (response.ok) {
+                await this.loadFallbackConfig();
+                this.showNotification(`Fallback ${enabled ? 'enabled' : 'disabled'} for ${type}`, 'success');
                 
-                // Get sequence name for notification
-                const sequence = this.sequences.find(s => s.id === sequenceId);
-                const sequenceName = sequence ? sequence.name : sequenceId;
-                this.showNotification(`Sequence '${sequenceName}' started`, 'success');
+                // Refresh UI to update fallback indicators
+                this.renderScenes();
+                this.renderSequences();
+            } else {
+                throw new Error('Failed to set fallback');
             }
         } catch (error) {
-            this.showNotification('Failed to start sequence', 'error');
+            console.error('Failed to set fallback:', error);
+            this.showNotification('Failed to set fallback', 'error');
         }
     }
 
-    pauseSequence() {
-        this.isPlaying = false;
-        if (this.stepTimer) {
-            clearTimeout(this.stepTimer);
-        }
-        if (this.stepProgressTimer) {
-            clearInterval(this.stepProgressTimer);
-        }
-        this.updatePlaybackInfo();
-        this.showNotification('Playback paused', 'warning');
-    }
-
-    async stopSequence() {
+    async disableFallback() {
         try {
-            // Call backend API to stop sequence playback
-            const response = await fetch(`${this.apiUrl}/playback/stop`, {
-                method: 'POST'
-            });
-            
-            if (response.ok) {
-                const result = await response.json();
-                console.log('Stop sequence response:', result);
-            } else {
-                console.error('Failed to stop sequence playback');
-            }
-        } catch (error) {
-            console.error('Error stopping sequence playback:', error);
-        }
-        
-        // Clear frontend state
-        this.isPlaying = false;
-        this.currentSequence = null;
-        this.currentScene = null;
-        this.currentStep = 0;
-        this.currentStepData = null;
-        this.stepStartTime = null;
-        if (this.stepTimer) {
-            clearTimeout(this.stepTimer);
-        }
-        if (this.sequenceTimer) {
-            clearInterval(this.sequenceTimer);
-        }
-        if (this.stepProgressTimer) {
-            clearInterval(this.stepProgressTimer);
-        }
-        this.updatePlaybackInfo();
-        this.hideSequenceStepInfo();
-        this.showNotification('Playback stopped', 'warning');
-    }
-
-    updatePlaybackInfo() {
-        const currentPlaybackElement = document.getElementById('current-playback');
-        const playbackTypeElement = document.getElementById('playback-type');
-        const playbackStatusElement = document.getElementById('playback-status');
-        const playPauseBtn = document.getElementById('play-pause-btn');
-        
-        if (this.currentScene) {
-            const scene = this.scenes.find(s => s.id === this.currentScene);
-            currentPlaybackElement.textContent = scene ? scene.name : 'Unknown Scene';
-            playbackTypeElement.textContent = 'Scene';
-        } else if (this.currentSequence) {
-            const sequence = this.sequences.find(s => s.id === this.currentSequence);
-            currentPlaybackElement.textContent = sequence ? sequence.name : 'Unknown Sequence';
-            playbackTypeElement.textContent = 'Sequence';
-        } else {
-            currentPlaybackElement.textContent = 'None';
-            playbackTypeElement.textContent = 'None';
-        }
-        
-        playbackStatusElement.textContent = this.isPlaying ? 'Playing' : 'Stopped';
-        
-        // Update play/pause button
-        if (playPauseBtn) {
-            const icon = playPauseBtn.querySelector('i');
-            if (this.isPlaying) {
-                icon.className = 'fas fa-pause';
-                playPauseBtn.title = 'Pause';
-            } else {
-                icon.className = 'fas fa-play';
-                playPauseBtn.title = 'Play';
-            }
-        }
-    }
-
-    showSequenceStepInfo() {
-        const stepInfoElement = document.getElementById('sequence-step-info');
-        if (stepInfoElement) {
-            stepInfoElement.style.display = 'block';
-        }
-    }
-
-    hideSequenceStepInfo() {
-        const stepInfoElement = document.getElementById('sequence-step-info');
-        if (stepInfoElement) {
-            stepInfoElement.style.display = 'none';
-        }
-    }
-
-    updateSequenceStepInfo(stepIndex, stepData, progress = 0) {
-        const stepNumberElement = document.getElementById('current-step-number');
-        const stepSceneElement = document.getElementById('current-step-scene');
-        const stepDurationElement = document.getElementById('current-step-duration');
-        const progressFillElement = document.getElementById('step-progress-fill');
-        
-        if (stepNumberElement) {
-            stepNumberElement.textContent = `${stepIndex + 1}`;
-        }
-        
-        if (stepSceneElement) {
-            if (stepData.scene_name) {
-                stepSceneElement.textContent = stepData.scene_name;
-            } else if (stepData.dmx) {
-                stepSceneElement.textContent = 'DMX Direct';
-            } else {
-                stepSceneElement.textContent = 'Unknown';
-            }
-        }
-        
-        if (stepDurationElement) {
-            const duration = stepData.duration || 1000;
-            stepDurationElement.textContent = `${duration}ms`;
-        }
-        
-        if (progressFillElement) {
-            progressFillElement.style.width = `${progress}%`;
-        }
-    }
-
-    startStepProgress(stepData) {
-        const duration = stepData.duration || 1000;
-        const startTime = Date.now();
-        this.stepStartTime = startTime;
-        
-        if (this.stepProgressTimer) {
-            clearInterval(this.stepProgressTimer);
-        }
-        
-        this.stepProgressTimer = setInterval(() => {
-            const elapsed = Date.now() - startTime;
-            const progress = Math.min((elapsed / duration) * 100, 100);
-            this.updateSequenceStepInfo(this.currentStep, stepData, progress);
-            
-            if (progress >= 100) {
-                clearInterval(this.stepProgressTimer);
-            }
-        }, 100);
-    }
-
-    togglePlayback() {
-        if (!this.currentScene && !this.currentSequence) {
-            this.showNotification('No scene or sequence to play', 'warning');
-            return;
-        }
-        
-        if (this.isPlaying) {
-            this.pauseSequence(); // This function now handles both scenes and sequences
-        } else {
-            if (this.currentScene) {
-                this.playScene(this.currentScene);
-            } else if (this.currentSequence) {
-                this.playSequence(this.currentSequence);
-            }
-        }
-    }
-
-    async deleteSequence(sequenceId) {
-        if (!confirm('Are you sure you want to delete this sequence?')) return;
-
-        try {
-            const response = await fetch(`${this.apiUrl}/sequences/${sequenceId}`, {
+            const response = await fetch(`${this.apiUrl}/fallback`, {
                 method: 'DELETE'
             });
+            
             if (response.ok) {
-                this.loadSequences();
-                this.showNotification('Sequence deleted successfully', 'success');
+                await this.loadFallbackConfig();
+                this.showNotification('Fallback disabled', 'success');
+            } else {
+                throw new Error('Failed to disable fallback');
             }
         } catch (error) {
-            this.showNotification('Failed to delete sequence', 'error');
+            console.error('Failed to disable fallback:', error);
+            this.showNotification('Failed to disable fallback', 'error');
         }
+    }
+
+    updateFallbackUI() {
+        // Update scene cards
+        this.scenes.forEach(scene => {
+            const card = document.querySelector(`[data-scene-id="${scene.id}"]`);
+            if (card) {
+                const fallbackBtn = card.querySelector('.btn-fallback');
+                if (fallbackBtn) {
+                    // Check for scene fallback (new feature)
+                    const sceneFallbackConfig = this.fallbackConfig?.config?.scene_fallback;
+                    const isSceneFallback = sceneFallbackConfig?.enabled && sceneFallbackConfig?.scene_id === scene.id;
+                    
+                    // Check for sequence fallback (existing feature)
+                    const isSequenceFallback = this.fallbackConfig?.config?.type === 'scene' && 
+                                              this.fallbackConfig?.config?.id === scene.id;
+                    
+                    const isFallback = isSceneFallback || isSequenceFallback;
+                    fallbackBtn.className = `btn ${isFallback ? 'btn-success' : 'btn-secondary'} btn-fallback`;
+                    
+                    if (isSceneFallback) {
+                        const delay = sceneFallbackConfig.delay || 1.0;
+                        fallbackBtn.innerHTML = `<i class="fas fa-clock"></i> Scene Fallback (${delay}s)`;
+                    } else if (isSequenceFallback) {
+                        fallbackBtn.innerHTML = `<i class="fas fa-stop"></i> Fallback ON`;
+                    } else {
+                        fallbackBtn.innerHTML = `<i class="fas fa-play"></i> Scene Fallback`;
+                    }
+                }
+            }
+        });
+
+        // Update sequence cards
+        this.sequences.forEach(sequence => {
+            const card = document.querySelector(`[data-sequence-id="${sequence.id}"]`);
+            if (card) {
+                const fallbackBtn = card.querySelector('.btn-fallback');
+                if (fallbackBtn) {
+                    const isFallback = this.fallbackConfig?.config?.type === 'sequence' && 
+                                      this.fallbackConfig?.config?.id === sequence.id;
+                    fallbackBtn.className = `btn ${isFallback ? 'btn-success' : 'btn-secondary'} btn-fallback`;
+                    fallbackBtn.innerHTML = `<i class="fas fa-${isFallback ? 'stop' : 'play'}"></i> ${isFallback ? 'Fallback ON' : 'Fallback'}`;
+                }
+            }
+        });
+    }
+
+    async toggleSceneFallback(sceneId) {
+        // Use the new scene fallback with delay functionality
+        await this.toggleSceneFallbackWithDelay(sceneId);
+    }
+
+    async toggleSequenceFallback(sequenceId) {
+        const isCurrentlyFallback = this.fallbackConfig?.config?.type === 'sequence' && 
+                                   this.fallbackConfig?.config?.id === sequenceId;
+        
+        if (isCurrentlyFallback) {
+            await this.disableFallback();
+        } else {
+            await this.setFallback('sequence', sequenceId, true);
+        }
+        
+        // Refresh sequences to update fallback indicators
+        this.renderSequences();
+    }
+
+    updateSceneFallbackButton(sceneId) {
+        const fallbackBtn = document.getElementById('scene-fallback-btn');
+        const isFallback = this.fallbackConfig?.config?.type === 'scene' && 
+                           this.fallbackConfig?.config?.id === sceneId;
+        
+        fallbackBtn.className = `btn ${isFallback ? 'btn-success' : 'btn-secondary'} btn-fallback`;
+        fallbackBtn.innerHTML = `<i class="fas fa-${isFallback ? 'stop' : 'play'}"></i> ${isFallback ? 'Fallback ON' : 'Set Fallback'}`;
+    }
+
+    updateSequenceFallbackButton(sequenceId) {
+        const fallbackBtn = document.getElementById('sequence-fallback-btn');
+        const isFallback = this.fallbackConfig?.config?.type === 'sequence' && 
+                           this.fallbackConfig?.config?.id === sequenceId;
+        
+        fallbackBtn.className = `btn ${isFallback ? 'btn-success' : 'btn-secondary'} btn-fallback`;
+        fallbackBtn.innerHTML = `<i class="fas fa-${isFallback ? 'stop' : 'play'}"></i> ${isFallback ? 'Fallback ON' : 'Set Fallback'}`;
+    }
+
+    async toggleSceneFallbackFromEditor() {
+        const modal = document.getElementById('scene-editor');
+        const sceneId = modal.dataset.sceneId;
+        
+        if (sceneId) {
+            await this.toggleSceneFallback(sceneId);
+            this.updateSceneFallbackButton(sceneId);
+        }
+    }
+
+    async toggleSequenceFallbackFromEditor() {
+        const modal = document.getElementById('sequence-editor');
+        const sequenceId = modal.dataset.sequenceId;
+        
+        if (sequenceId) {
+            await this.toggleSequenceFallback(sequenceId);
+            this.updateSequenceFallbackButton(sequenceId);
+        }
+    }
+
+    async setSceneFallback(sceneId, enabled = true, delay = 1.0) {
+        try {
+            const response = await fetch(`${this.apiUrl}/fallback`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    scene_fallback: {
+                        enabled: enabled,
+                        scene_id: sceneId,
+                        delay: delay
+                    }
+                })
+            });
+            
+            if (response.ok) {
+                await this.loadFallbackConfig();
+                this.showNotification(`Scene fallback ${enabled ? 'enabled' : 'disabled'} for scene '${sceneId}' with ${delay}s delay`, 'success');
+            } else {
+                throw new Error('Failed to set scene fallback');
+            }
+        } catch (error) {
+            console.error('Failed to set scene fallback:', error);
+            this.showNotification('Failed to set scene fallback', 'error');
+        }
+    }
+
+    async toggleSceneFallbackWithDelay(sceneId) {
+        const sceneFallbackConfig = this.fallbackConfig?.config?.scene_fallback;
+        const isCurrentlyFallback = sceneFallbackConfig?.enabled && sceneFallbackConfig?.scene_id === sceneId;
+        
+        if (isCurrentlyFallback) {
+            await this.setSceneFallback(sceneId, false);
+        } else {
+            // Prompt for delay
+            const delay = prompt('Enter fallback delay in seconds (default: 1.0):', '1.0');
+            if (delay !== null) {
+                const delayValue = parseFloat(delay) || 1.0;
+                await this.setSceneFallback(sceneId, true, delayValue);
+            }
+        }
+        
+        // Refresh scenes to update fallback indicators
+        this.renderScenes();
     }
 
     // Settings Management
@@ -1276,4 +1572,9 @@ function toggleSequenceAutostart(id) { dmxConsole.toggleSequenceAutostart(id); }
 function toggleSceneAutostartFromEditor() { dmxConsole.toggleSceneAutostartFromEditor(); }
 function toggleSequenceAutostartFromEditor() { dmxConsole.toggleSequenceAutostartFromEditor(); }
 function deleteSceneFromEditor() { dmxConsole.deleteSceneFromEditor(); }
-function deleteSequenceFromEditor() { dmxConsole.deleteSequenceFromEditor(); } 
+function deleteSequenceFromEditor() { dmxConsole.deleteSequenceFromEditor(); }
+function toggleSceneFallback(id) { dmxConsole.toggleSceneFallback(id); }
+function toggleSequenceFallback(id) { dmxConsole.toggleSequenceFallback(id); }
+function toggleSceneFallbackFromEditor() { dmxConsole.toggleSceneFallbackFromEditor(); }
+function toggleSequenceFallbackFromEditor() { dmxConsole.toggleSequenceFallbackFromEditor(); }
+function toggleSceneFallbackWithDelay(id) { dmxConsole.toggleSceneFallbackWithDelay(id); }

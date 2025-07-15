@@ -177,8 +177,8 @@
                             <textarea id="scene-description" placeholder="Scene description"></textarea>
                         </div>
                         <div class="form-group">
-                            <label for="scene-fade-time">Fade Time (ms):</label>
-                            <input type="number" id="scene-fade-time" value="1000" min="0" max="30000" />
+                            <label for="scene-fade">Fade Time (ms):</label>
+                            <input type="number" id="scene-fade" value="1000" min="0" max="30000" />
                         </div>
                     </div>
                     <div class="editor-right">
@@ -198,6 +198,9 @@
                 <div class="modal-footer-center">
                     <button class="btn btn-secondary btn-autostart" onclick="toggleSceneAutostartFromEditor()" id="scene-autostart-btn">
                         <i class="fas fa-play"></i> Set Autostart
+                    </button>
+                    <button class="btn btn-secondary btn-fallback" onclick="toggleSceneFallbackFromEditor()" id="scene-fallback-btn">
+                        <i class="fas fa-play"></i> Set Fallback
                     </button>
                 </div>
                 <div class="modal-footer-right">
@@ -253,6 +256,9 @@
                 <div class="modal-footer-center">
                     <button class="btn btn-secondary btn-autostart" onclick="toggleSequenceAutostartFromEditor()" id="sequence-autostart-btn">
                         <i class="fas fa-play"></i> Set Autostart
+                    </button>
+                    <button class="btn btn-secondary btn-fallback" onclick="toggleSequenceFallbackFromEditor()" id="sequence-fallback-btn">
+                        <i class="fas fa-play"></i> Set Fallback
                     </button>
                 </div>
                 <div class="modal-footer-right">
