@@ -48,6 +48,7 @@ class MQTTDMXSequencer:
         # Fallback management
         self.fallback_config = self.config.get('fallback', {})
         self.fallback_timer = None
+        print(f"Loaded fallback configuration: {self.fallback_config}")
         
         # Web server settings from config or command line
         web_config = self.config_manager.get_web_server_config()
@@ -796,6 +797,8 @@ class MQTTDMXSequencer:
                     scene_id = scene_fallback_data.get('scene_id', 'blackout')
                     delay = scene_fallback_data.get('delay', 1.0)
                     
+                    print(f"Setting scene fallback: enabled={enabled}, scene_id={scene_id}, delay={delay}")
+                    
                     # Update scene fallback configuration
                     if 'scene_fallback' not in self.fallback_config:
                         self.fallback_config['scene_fallback'] = {}
@@ -805,6 +808,8 @@ class MQTTDMXSequencer:
                         'scene_id': scene_id,
                         'delay': delay
                     }
+                    
+                    print(f"Updated scene fallback config: {self.fallback_config}")
                     
                     # Save to config
                     self.config['fallback'] = self.fallback_config
@@ -848,6 +853,8 @@ class MQTTDMXSequencer:
                     scene_id = sequence_fallback_data.get('scene_id', 'blackout')
                     delay = sequence_fallback_data.get('delay', 1.0)
                     
+                    print(f"Setting sequence fallback: enabled={enabled}, scene_id={scene_id}, delay={delay}")
+                    
                     # Update sequence fallback configuration
                     if 'sequence_fallback' not in self.fallback_config:
                         self.fallback_config['sequence_fallback'] = {}
@@ -857,6 +864,8 @@ class MQTTDMXSequencer:
                         'scene_id': scene_id,
                         'delay': delay
                     }
+                    
+                    print(f"Updated sequence fallback config: {self.fallback_config}")
                     
                     # Save to config
                     self.config['fallback'] = self.fallback_config
@@ -1031,9 +1040,8 @@ class MQTTDMXSequencer:
                     return jsonify({"success": False, "error": "Delay must be between 0.1 and 60.0 seconds"}), 400
                 
                 # Update settings
-                settings = self.config_manager.get_settings()
-                settings['fallback_delay'] = delay
-                self.config_manager.save_settings(settings)
+                self.config_manager.settings['fallback_delay'] = delay
+                self.config_manager.save_settings()
                 
                 return jsonify({
                     "success": True,
@@ -1121,21 +1129,31 @@ class MQTTDMXSequencer:
 
     def trigger_scene_fallback(self, scene_name):
         """Trigger the scene fallback after a scene is played"""
+        print(f"Checking scene fallback for scene: {scene_name}")
+        print(f"Current fallback config: {self.fallback_config}")
+        
         scene_fallback_config = self.fallback_config.get('scene_fallback', {})
+        print(f"Scene fallback config: {scene_fallback_config}")
+        
         if not scene_fallback_config.get('enabled'):
+            print("Scene fallback not enabled")
             return
             
         fallback_scene_id = scene_fallback_config.get('scene_id')
         # Use global fallback delay from settings
-        global_delay = self.config_manager.get_settings().get('fallback_delay', 1.0)
+        global_delay = self.config_manager.settings.get('fallback_delay', 1.0)
         delay = scene_fallback_config.get('delay', global_delay)
         
+        print(f"Fallback scene ID: {fallback_scene_id}, Delay: {delay}")
+        
         if not fallback_scene_id:
+            print("No fallback scene ID configured")
             return
             
         print(f"Triggering scene fallback: scene '{fallback_scene_id}' after {delay}s delay")
         
         def run_scene_fallback():
+            print(f"Starting scene fallback thread, waiting {delay}s...")
             if delay > 0:
                 time.sleep(delay)
             
@@ -1149,19 +1167,27 @@ class MQTTDMXSequencer:
 
     def trigger_sequence_fallback(self):
         """Trigger the sequence fallback after a sequence finishes"""
+        print("Checking sequence fallback")
+        print(f"Current fallback config: {self.fallback_config}")
+        
         sequence_fallback_config = self.fallback_config.get('sequence_fallback', {})
+        print(f"Sequence fallback config: {sequence_fallback_config}")
+        
         if not sequence_fallback_config.get('enabled'):
+            print("Sequence fallback not enabled")
             return
             
         # Use the configured fallback scene from sequence fallback config
         fallback_scene_id = sequence_fallback_config.get('scene_id', 'blackout')
         # Use global fallback delay from settings
-        global_delay = self.config_manager.get_settings().get('fallback_delay', 1.0)
+        global_delay = self.config_manager.settings.get('fallback_delay', 1.0)
         delay = sequence_fallback_config.get('delay', global_delay)
         
+        print(f"Fallback scene ID: {fallback_scene_id}, Delay: {delay}")
         print(f"Triggering sequence fallback: scene '{fallback_scene_id}' after {delay}s delay")
         
         def run_sequence_fallback():
+            print(f"Starting sequence fallback thread, waiting {delay}s...")
             if delay > 0:
                 time.sleep(delay)
             
@@ -1296,6 +1322,7 @@ class MQTTDMXSequencer:
         
         # Handle scene control
         elif topic.startswith("dmx/scene/"):
+            print(f"MQTT: Handling scene control for topic: {topic}")
             self.handle_scene_control(topic, payload)
         
         # Handle DMX sender management
@@ -1308,6 +1335,7 @@ class MQTTDMXSequencer:
         
         # Handle sequence playback
         elif topic in self.config.get('sequences', {}):
+            print(f"MQTT: Handling sequence playback for topic: {topic}")
             self.play_sequence(self.config['sequences'][topic])
 
     def handle_channel_control(self, topic, payload):
