@@ -51,9 +51,9 @@
     "enabled": false,
     "interval": 5.0
   },
-  "dmx_retransmission": {
-    "enabled": false,
-    "interval": 5.0
+  "dmx_followers": {
+    "enabled": true,
+    "mappings": {}
   },
   "fallback": {
     "enabled": false,

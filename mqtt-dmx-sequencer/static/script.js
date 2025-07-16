@@ -38,6 +38,9 @@ class DMXConsole {
         await this.loadDMXRetransmissionSettings();
         this.setupDMXRetransmissionListeners();
         
+        // Update fader visual states after everything is loaded
+        await this.updateFaderVisualStates();
+        
         // Setup fallback delay event listener after settings are loaded
         this.setupFallbackDelayListener();
         
@@ -156,12 +159,19 @@ class DMXConsole {
         for (let i = 1; i <= this.channelCount; i++) {
             const fader = document.createElement('div');
             fader.className = 'dmx-fader';
+            fader.dataset.channel = i; // Add data attribute for easier selection
             fader.innerHTML = `
-                <div class="fader-label">CH${i}</div>
+                <div class="fader-label" data-fader-label="${i}">CH${i}</div>
                 <input type="range" class="fader-slider" min="0" max="255" value="0" 
                        data-channel="${i}">
                 <div class="fader-value">0</div>
             `;
+
+            // Fader label click for follower editor
+            const label = fader.querySelector('.fader-label');
+            label.addEventListener('click', () => {
+                this.openFollowerEditor(i);
+            });
 
             const slider = fader.querySelector('.fader-slider');
             const valueDisplay = fader.querySelector('.fader-value');
@@ -176,6 +186,10 @@ class DMXConsole {
                 this.currentChannels[channel - 1] = value;
                 valueDisplay.textContent = value;
                 this.sendDMXChannel(channel, value);
+                
+                // Sync follower channels
+                this.syncFollowerChannels(channel, value);
+                
                 // MQTT passthrough
                 if (this.mqttPassthroughEnabled) {
                     await this.sendMQTTPublish(`dmx/set/channel/${channel}`, value);
@@ -183,6 +197,186 @@ class DMXConsole {
             });
 
             container.appendChild(fader);
+        }
+        
+        // Update visual states after generating faders
+        this.updateFaderVisualStates();
+    }
+
+    async updateFaderVisualStates() {
+        try {
+            console.log('Updating fader visual states...');
+            const response = await fetch(`${this.apiUrl}/settings/dmx-followers`);
+            if (response.ok) {
+                const data = await response.json();
+                console.log('Follower data:', data);
+                if (data.success && data.data && data.data.enabled) {
+                    const mappings = data.data.mappings || {};
+                    console.log('Mappings:', mappings);
+                    
+                    // Get all follower channels and their controllers
+                    const allFollowers = new Set();
+                    const followerControllers = new Map(); // follower -> controller
+                    Object.entries(mappings).forEach(([controller, followers]) => {
+                        followers.forEach(follower => {
+                            allFollowers.add(follower);
+                            followerControllers.set(follower, controller);
+                        });
+                    });
+                    console.log('All followers:', Array.from(allFollowers));
+                    console.log('Follower controllers:', Object.fromEntries(followerControllers));
+                    
+                    // Update each fader's visual state
+                    for (let i = 1; i <= this.channelCount; i++) {
+                        const fader = document.querySelector(`.dmx-fader[data-channel="${i}"]`);
+                        if (fader) {
+                            const hasFollowers = mappings[i] && mappings[i].length > 0;
+                            const isFollower = allFollowers.has(i);
+                            const controller = followerControllers.get(i);
+                            
+                            console.log(`Channel ${i}: hasFollowers=${hasFollowers}, isFollower=${isFollower}, controller=${controller}`);
+                            
+                            // Remove existing classes
+                            fader.classList.remove('has-followers', 'is-follower');
+                            
+                            // Update channel label for followers
+                            const label = fader.querySelector('.fader-label');
+                            if (isFollower && controller) {
+                                label.textContent = `CH${i} [CH${controller}]`;
+                            } else {
+                                label.textContent = `CH${i}`;
+                            }
+                            
+                            // Add appropriate classes
+                            if (hasFollowers) {
+                                fader.classList.add('has-followers');
+                                console.log(`Added has-followers to channel ${i}`);
+                            }
+                            if (isFollower) {
+                                fader.classList.add('is-follower');
+                                console.log(`Added is-follower to channel ${i}`);
+                            }
+                        } else {
+                            console.log(`Fader not found for channel ${i}`);
+                        }
+                    }
+                } else {
+                    console.log('Followers disabled or no data');
+                    // Clear all visual states if followers are disabled
+                    document.querySelectorAll('.dmx-fader').forEach(fader => {
+                        fader.classList.remove('has-followers', 'is-follower');
+                        // Reset labels to original format
+                        const label = fader.querySelector('.fader-label');
+                        const channel = fader.dataset.channel;
+                        if (label && channel) {
+                            label.textContent = `CH${channel}`;
+                        }
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Failed to update fader visual states:', error);
+        }
+    }
+
+    openFollowerEditor(channel) {
+        // Load current mappings
+        fetch(`${this.apiUrl}/settings/dmx-followers`).then(r => r.json()).then(data => {
+            if (data.success && data.data) {
+                const mappings = data.data.mappings || {};
+                const followers = mappings[channel] || [];
+                document.getElementById('follower-editor-channel').textContent = channel;
+                document.getElementById('follower-editor-input').value = followers.join(',');
+                document.getElementById('follower-editor-modal').style.display = 'block';
+            }
+        });
+        // Setup modal listeners (only once)
+        if (!this._followerEditorSetup) {
+            document.getElementById('follower-editor-close').onclick = () => {
+                document.getElementById('follower-editor-modal').style.display = 'none';
+            };
+            document.getElementById('follower-editor-cancel').onclick = () => {
+                document.getElementById('follower-editor-modal').style.display = 'none';
+            };
+            document.getElementById('follower-editor-save').onclick = async () => {
+                const ch = parseInt(document.getElementById('follower-editor-channel').textContent);
+                const val = document.getElementById('follower-editor-input').value.trim();
+                let arr = [];
+                if (val) {
+                    arr = val.split(',').map(x => parseInt(x.trim())).filter(x => !isNaN(x) && x !== ch);
+                }
+                console.log(`Saving followers for channel ${ch}:`, arr);
+                
+                // Get current settings
+                let settings = await fetch(`${this.apiUrl}/settings/dmx-followers`).then(r => r.json());
+                if (settings.success && settings.data) {
+                    let mappings = settings.data.mappings || {};
+                    let enabled = settings.data.enabled || false;
+                    
+                    if (arr.length > 0) {
+                        mappings[ch] = arr;
+                        enabled = true; // Auto-enable when mappings are added
+                    } else {
+                        delete mappings[ch];
+                        // Check if any mappings remain
+                        enabled = Object.keys(mappings).length > 0;
+                    }
+                    console.log('New mappings:', mappings);
+                    console.log('Enabled:', enabled);
+                    
+                    // Save
+                    const saveResponse = await fetch(`${this.apiUrl}/settings/dmx-followers`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ enabled: enabled, mappings })
+                    });
+                    
+                    if (saveResponse.ok) {
+                        this.showNotification('Follower channels updated', 'success');
+                        
+                        // Update visual states after saving
+                        console.log('Triggering visual update after save...');
+                        await this.updateFaderVisualStates();
+                    } else {
+                        this.showNotification('Failed to save follower settings', 'error');
+                    }
+                }
+                document.getElementById('follower-editor-modal').style.display = 'none';
+            };
+            this._followerEditorSetup = true;
+        }
+    }
+
+    // Manual refresh function for testing
+    async refreshFaderVisuals() {
+        console.log('Manual refresh triggered');
+        await this.updateFaderVisualStates();
+    }
+
+    async syncFollowerChannels(sourceChannel, value) {
+        try {
+            const response = await fetch(`${this.apiUrl}/settings/dmx-followers`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.data && data.data.enabled) {
+                    const mappings = data.data.mappings || {};
+                    const followers = mappings[sourceChannel] || [];
+                    
+                    // Update follower sliders
+                    followers.forEach(followerChannel => {
+                        const followerSlider = document.querySelector(`.fader-slider[data-channel="${followerChannel}"]`);
+                        const followerValue = document.querySelector(`.fader-slider[data-channel="${followerChannel}"]`).nextElementSibling;
+                        
+                        if (followerSlider && followerValue) {
+                            followerSlider.value = value;
+                            followerValue.textContent = value;
+                            this.currentChannels[followerChannel - 1] = value;
+                        }
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Failed to sync follower channels:', error);
         }
     }
 

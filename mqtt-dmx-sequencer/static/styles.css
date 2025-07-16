@@ -887,3 +887,45 @@ body {
         grid-template-columns: 1fr;
     }
 } 
+
+/* Follower Channel Visual Indicators */
+.dmx-fader.has-followers {
+    border: 2px solid #28a745;
+    border-radius: 4px;
+    padding: 2px;
+}
+
+.dmx-fader.is-follower {
+    border: 2px solid #6c757d;
+    border-radius: 4px;
+    padding: 2px;
+}
+
+.dmx-fader.has-followers .fader-label {
+    color: #28a745;
+    font-weight: bold;
+}
+
+.dmx-fader.is-follower .fader-label {
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* Follower slider styling */
+.dmx-fader.is-follower .fader-slider {
+    background: #6c757d;
+    opacity: 0.8;
+}
+
+.dmx-fader.is-follower .fader-slider::-webkit-slider-thumb {
+    background: #495057;
+}
+
+.dmx-fader.is-follower .fader-slider::-moz-range-thumb {
+    background: #495057;
+}
+
+.dmx-fader.is-follower .fader-value {
+    color: #6c757d;
+    font-style: italic;
+} 

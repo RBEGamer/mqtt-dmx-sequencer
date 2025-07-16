@@ -49,5 +49,9 @@
   "dmx_retransmission": {
     "enabled": false,
     "interval": 5.0
+  },
+  "dmx_followers": {
+    "enabled": false,
+    "mappings": {}
   }
 } 

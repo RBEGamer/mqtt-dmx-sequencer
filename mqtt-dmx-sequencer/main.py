@@ -87,6 +87,8 @@ class MQTTDMXSequencer:
         if self.dmx_retransmission_settings.get('enabled', False):
             self.start_dmx_retransmission()
 
+        self.dmx_followers_settings = self.config_manager.settings.get('dmx_followers', {'enabled': False, 'mappings': {}})
+
     def load_config(self, path):
         print(f"Loading config from: {path}")
         with open(path, 'r') as f:
@@ -1119,6 +1121,34 @@ class MQTTDMXSequencer:
             except Exception as e:
                 return jsonify({'success': False, 'error': str(e)}), 500
 
+        @self.flask_app.route('/api/settings/dmx-followers', methods=['GET'])
+        def get_dmx_followers():
+            try:
+                return jsonify({'success': True, 'data': self.dmx_followers_settings})
+            except Exception as e:
+                return jsonify({'success': False, 'error': str(e)}), 500
+
+        @self.flask_app.route('/api/settings/dmx-followers', methods=['POST'])
+        def set_dmx_followers():
+            try:
+                data = request.get_json()
+                enabled = bool(data.get('enabled', False))
+                mappings = data.get('mappings', {})
+                
+                # Auto-enable if mappings are provided
+                if mappings and any(mappings.values()):
+                    enabled = True
+                
+                self.dmx_followers_settings['enabled'] = enabled
+                self.dmx_followers_settings['mappings'] = mappings
+                self.config_manager.settings['dmx_followers'] = self.dmx_followers_settings
+                self.config_manager.save_settings()
+                
+                print(f"Updated DMX followers: enabled={enabled}, mappings={mappings}")
+                return jsonify({'success': True, 'data': self.dmx_followers_settings})
+            except Exception as e:
+                return jsonify({'success': False, 'error': str(e)}), 500
+
     def save_config(self):
         """Save current configuration to file"""
         try:
@@ -1548,7 +1578,7 @@ class MQTTDMXSequencer:
                     channels[channel_number] = value
             
             # Set all channels at once
-            self.dmx_manager.set_channels(channels)
+            self.set_channels_with_followers(channels)
             if auto_send:
                 self.dmx_manager.send()
             print(f"Scene '{scene_name}' applied")
@@ -1646,7 +1676,7 @@ class MQTTDMXSequencer:
                                 continue
                         
                         # Set channels for this step
-                        self.dmx_manager.set_channels(dmx_channels)
+                        self.set_channels_with_followers(dmx_channels)
                         if auto_play:
                             self.dmx_manager.send()
                         
@@ -1708,6 +1738,24 @@ class MQTTDMXSequencer:
             self.start_dmx_retransmission()
         else:
             self.stop_dmx_retransmission()
+
+    def apply_follower_channels(self, channels):
+        if not self.dmx_followers_settings.get('enabled', False):
+            return channels
+        mappings = self.dmx_followers_settings.get('mappings', {})
+        # mappings: {"source_channel": [follower1, follower2, ...]}
+        updated = dict(channels)
+        for src, followers in mappings.items():
+            src = int(src)
+            if src in channels:
+                for follower in followers:
+                    updated[int(follower)] = channels[src]
+        return updated
+
+    # Patch DMX set_channels to apply followers
+    def set_channels_with_followers(self, channels):
+        channels = self.apply_follower_channels(channels)
+        self.dmx_manager.set_channels(channels)
 
     def run(self):
         """Run the MQTT DMX sequencer"""

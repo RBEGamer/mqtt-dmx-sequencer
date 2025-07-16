@@ -165,6 +165,9 @@
                     <button class="btn btn-secondary" onclick="testConnection()">
                         <i class="fas fa-wifi"></i> Test
                     </button>
+                    <button class="btn btn-secondary" onclick="dmxConsole.refreshFaderVisuals()">
+                        <i class="fas fa-sync"></i> Refresh Visuals
+                    </button>
                 </div>
             </div>
         </div>
@@ -315,6 +318,29 @@
 
     <!-- Notification -->
     <div id="notification" class="notification"></div>
+
+    <!-- Follower Channel Editor Modal -->
+    <div id="follower-editor-modal" class="modal">
+        <div class="modal-content small">
+            <div class="modal-header">
+                <h3>Edit Follower Channels for <span id="follower-editor-channel"></span></h3>
+                <span class="close" id="follower-editor-close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="follower-editor-input">Follower Channels (comma-separated):</label>
+                    <input type="text" id="follower-editor-input" placeholder="e.g. 5,10,12" />
+                </div>
+                <div class="form-group">
+                    <small>Enter channel numbers that should follow this channel. Example: 5,10,12</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="follower-editor-cancel">Cancel</button>
+                <button class="btn btn-primary" id="follower-editor-save">Save</button>
+            </div>
+        </div>
+    </div>
 
     <script src="script.js"></script>
 </body>
