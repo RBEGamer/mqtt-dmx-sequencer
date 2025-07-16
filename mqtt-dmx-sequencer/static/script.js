@@ -10,6 +10,7 @@ class DMXConsole {
         this.currentScene = null;
         this.currentProgrammableScene = null;
         this.isPlaying = false;
+        this.playbackPaused = false;
         this.currentStep = 0;
         this.currentStepData = null;
         this.stepStartTime = null;
@@ -505,8 +506,12 @@ class DMXConsole {
                     console.log('[pollPlaybackStatus] status:', status); // DEBUG
                     // Sync frontend playing state with backend
                     const backendIsPlaying = status.is_playing;
-                    if (backendIsPlaying !== this.isPlaying) {
+                    const backendIsPaused = status.playback_paused;
+                    
+                    // Update if playing state or pause state changed
+                    if (backendIsPlaying !== this.isPlaying || backendIsPaused !== this.playbackPaused) {
                         this.isPlaying = backendIsPlaying;
+                        this.playbackPaused = backendIsPaused;
                         this.updatePlaybackInfo();
                     }
                     
@@ -1274,26 +1279,43 @@ class DMXConsole {
 
     async pauseSequence() {
         try {
-            const response = await fetch(`${this.apiUrl}/sequences/${this.currentSequence}/pause`, {
+            const response = await fetch(`${this.apiUrl}/playback/pause`, {
                 method: 'POST'
             });
             
             if (response.ok) {
-                this.isPlaying = false;
                 this.updatePlaybackInfo();
-                this.showNotification('Sequence paused', 'info');
+                this.showNotification('Playback paused', 'info');
             } else {
-                throw new Error('Failed to pause sequence');
+                throw new Error('Failed to pause playback');
             }
         } catch (error) {
-            console.error('Failed to pause sequence:', error);
-            this.showNotification('Failed to pause sequence', 'error');
+            console.error('Failed to pause playback:', error);
+            this.showNotification('Failed to pause playback', 'error');
+        }
+    }
+
+    async resumeSequence() {
+        try {
+            const response = await fetch(`${this.apiUrl}/playback/resume`, {
+                method: 'POST'
+            });
+            
+            if (response.ok) {
+                this.updatePlaybackInfo();
+                this.showNotification('Playback resumed', 'info');
+            } else {
+                throw new Error('Failed to resume playback');
+            }
+        } catch (error) {
+            console.error('Failed to resume playback:', error);
+            this.showNotification('Failed to resume playback', 'error');
         }
     }
 
     async stopSequence() {
         try {
-            const response = await fetch(`${this.apiUrl}/sequences/${this.currentSequence}/stop`, {
+            const response = await fetch(`${this.apiUrl}/playback/stop`, {
                 method: 'POST'
             });
             
@@ -1305,22 +1327,52 @@ class DMXConsole {
                 this.stepTimer = null;
                 this.sequenceTimer = null;
                 this.stepProgressTimer = null;
+                this.currentScene = null;
+                this.currentSequence = null;
+                this.currentProgrammableScene = null;
                 this.updatePlaybackInfo();
-                this.showNotification('Sequence stopped', 'info');
+                this.hideSequenceStepInfo();
+                this.hideProgrammableSceneInfo();
+                this.showNotification('Playback stopped', 'info');
             } else {
-                throw new Error('Failed to stop sequence');
+                throw new Error('Failed to stop playback');
             }
         } catch (error) {
-            console.error('Failed to stop sequence:', error);
-            this.showNotification('Failed to stop sequence', 'error');
+            console.error('Failed to stop playback:', error);
+            this.showNotification('Failed to stop playback', 'error');
         }
     }
 
-    togglePlayback() {
-        if (this.isPlaying) {
-            this.pauseSequence();
-        } else {
-            this.playSequence(this.currentSequence);
+    async togglePlayback() {
+        try {
+            // Get current playback status from backend
+            const response = await fetch(`${this.apiUrl}/playback/status`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.data) {
+                    const status = data.data;
+                    
+                    if (status.is_playing && !status.playback_paused) {
+                        // Currently playing, so pause
+                        await this.pauseSequence();
+                    } else if (status.is_playing && status.playback_paused) {
+                        // Currently paused, so resume
+                        await this.resumeSequence();
+                    } else {
+                        // Not playing, so start the last known sequence/scene
+                        if (this.currentSequence) {
+                            await this.playSequence(this.currentSequence);
+                        } else if (this.currentScene) {
+                            await this.playScene(this.currentScene);
+                        } else if (this.currentProgrammableScene) {
+                            await this.playProgrammable(this.currentProgrammableScene);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Failed to toggle playback:', error);
+            this.showNotification('Failed to toggle playback', 'error');
         }
     }
 
@@ -1328,33 +1380,79 @@ class DMXConsole {
         const currentPlayback = document.getElementById('current-playback');
         const playbackType = document.getElementById('playback-type');
         const playbackStatus = document.getElementById('playback-status');
+        const playPauseBtn = document.getElementById('play-pause-btn');
+        const playPauseIcon = playPauseBtn ? playPauseBtn.querySelector('i') : null;
+        
         console.log('[updatePlaybackInfo] isPlaying:', this.isPlaying, 'currentScene:', this.currentScene, 'currentSequence:', this.currentSequence, 'currentProgrammableScene:', this.currentProgrammableScene); // DEBUG
-        if (this.isPlaying) {
-            let playingName = 'Unknown';
-            let typeName = 'Unknown';
-            
-            if (this.currentProgrammableScene) {
-                const programmableScene = this.programmableScenes.find(s => s.id === this.currentProgrammableScene);
-                playingName = programmableScene ? programmableScene.name : this.currentProgrammableScene;
-                typeName = 'Programmable Scene';
-            } else if (this.currentSequence) {
-                const sequence = this.sequences.find(s => s.id === this.currentSequence);
-                playingName = sequence ? sequence.name : this.currentSequence;
-                typeName = 'Sequence';
-            } else if (this.currentScene) {
-                const scene = this.scenes.find(s => s.id === this.currentScene);
-                playingName = scene ? scene.name : this.currentScene;
-                typeName = 'Scene';
-            }
-            
-            if (currentPlayback) currentPlayback.textContent = playingName;
-            if (playbackType) playbackType.textContent = typeName;
-            if (playbackStatus) playbackStatus.textContent = 'Playing';
-        } else {
-            if (currentPlayback) currentPlayback.textContent = 'None';
-            if (playbackType) playbackType.textContent = 'None';
-            if (playbackStatus) playbackStatus.textContent = 'Stopped';
-        }
+        
+        // Get current playback status from backend to determine if paused
+        fetch(`${this.apiUrl}/playback/status`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.data) {
+                    const status = data.data;
+                    const isPlaying = status.is_playing;
+                    const isPaused = status.playback_paused;
+                    
+                    // Update play/pause button appearance and color
+                    if (playPauseBtn && playPauseIcon) {
+                        if (isPlaying && !isPaused) {
+                            // Playing: yellow button, black pause icon
+                            playPauseIcon.className = 'fas fa-pause';
+                            playPauseIcon.style.color = '#000';
+                            playPauseBtn.style.backgroundColor = '#ffd700';
+                            playPauseBtn.style.borderColor = '#ffd700';
+                            playPauseBtn.title = 'Pause';
+                        } else if (isPlaying && isPaused) {
+                            // Paused: default button, play icon
+                            playPauseIcon.className = 'fas fa-play';
+                            playPauseIcon.style.color = '';
+                            playPauseBtn.style.backgroundColor = '';
+                            playPauseBtn.style.borderColor = '';
+                            playPauseBtn.title = 'Resume';
+                        } else {
+                            // Not playing: default button, play icon
+                            playPauseIcon.className = 'fas fa-play';
+                            playPauseIcon.style.color = '';
+                            playPauseBtn.style.backgroundColor = '';
+                            playPauseBtn.style.borderColor = '';
+                            playPauseBtn.title = 'Play';
+                        }
+                    }
+                    
+                    if (isPlaying) {
+                        let playingName = 'Unknown';
+                        let typeName = 'Unknown';
+                        
+                        if (status.current_programmable_scene) {
+                            const programmableScene = this.programmableScenes.find(s => s.id === status.current_programmable_scene);
+                            playingName = programmableScene ? programmableScene.name : status.current_programmable_scene;
+                            typeName = 'Programmable Scene';
+                        } else if (status.current_sequence) {
+                            const sequence = this.sequences.find(s => s.id === status.current_sequence);
+                            playingName = sequence ? sequence.name : status.current_sequence;
+                            typeName = 'Sequence';
+                        } else if (status.current_scene) {
+                            const scene = this.scenes.find(s => s.id === status.current_scene);
+                            playingName = scene ? scene.name : status.current_scene;
+                            typeName = 'Scene';
+                        }
+                        
+                        if (currentPlayback) currentPlayback.textContent = playingName;
+                        if (playbackType) playbackType.textContent = typeName;
+                        if (playbackStatus) {
+                            playbackStatus.textContent = isPaused ? 'Paused' : 'Playing';
+                        }
+                    } else {
+                        if (currentPlayback) currentPlayback.textContent = 'None';
+                        if (playbackType) playbackType.textContent = 'None';
+                        if (playbackStatus) playbackStatus.textContent = 'Stopped';
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Failed to update playback info:', error);
+            });
     }
 
     updateSequenceStepInfo(stepNumber, stepData) {
@@ -2350,6 +2448,7 @@ function saveStep() { dmxConsole.saveStep(); }
 function removeStep(index) { dmxConsole.removeStep(index); }
 function playSequence(id) { dmxConsole.playSequence(id); }
 function pauseSequence() { dmxConsole.pauseSequence(); }
+function resumeSequence() { dmxConsole.resumeSequence(); }
 async function stopSequence() { await dmxConsole.stopSequence(); }
 function togglePlayback() { dmxConsole.togglePlayback(); }
 function toggleSceneAutostart(id) { dmxConsole.toggleSceneAutostart(id); }

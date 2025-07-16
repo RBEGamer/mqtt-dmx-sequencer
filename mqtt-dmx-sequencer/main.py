@@ -1149,6 +1149,52 @@ class MQTTDMXSequencer:
                     "error": str(e)
                 }), 500
 
+        @self.flask_app.route('/api/playback/pause', methods=['POST', 'GET'])
+        def pause_playback():
+            """Pause the current playback"""
+            try:
+                if not self.playback_paused and (self.current_sequence_playback or self.current_scene_playback or self.current_programmable_scene_playback):
+                    self.playback_paused = True
+                    self.playback_pause_time = time.time()
+                    return jsonify({
+                        "success": True,
+                        "message": "Playback paused"
+                    })
+                else:
+                    return jsonify({
+                        "success": False,
+                        "message": "No active playback to pause or already paused"
+                    }), 404
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/playback/resume', methods=['POST', 'GET'])
+        def resume_playback():
+            """Resume the current playback"""
+            try:
+                if self.playback_paused and (self.current_sequence_playback or self.current_scene_playback or self.current_programmable_scene_playback):
+                    self.playback_paused = False
+                    if self.playback_pause_time:
+                        self.total_pause_time += time.time() - self.playback_pause_time
+                        self.playback_pause_time = None
+                    return jsonify({
+                        "success": True,
+                        "message": "Playback resumed"
+                    })
+                else:
+                    return jsonify({
+                        "success": False,
+                        "message": "No paused playback to resume"
+                    }), 404
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
         @self.flask_app.route('/api/playback/stop', methods=['POST', 'GET'])
         def stop_playback():
             """Stop the current playback"""
@@ -2085,7 +2131,12 @@ class MQTTDMXSequencer:
             previous_channels = {}  # Track previous channel values
             
             while not self.shutdown_requested and self.current_programmable_scene_playback:
-                current_time = time.time() - start_time
+                # Check for pause state
+                if self.playback_paused:
+                    time.sleep(0.1)  # Short sleep while paused
+                    continue
+                
+                current_time = time.time() - start_time - self.total_pause_time
                 
                 # Check if scene duration exceeded (unless looping)
                 if not loop and current_time >= duration:
