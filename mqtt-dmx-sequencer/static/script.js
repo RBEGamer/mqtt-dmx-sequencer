@@ -502,7 +502,7 @@ class DMXConsole {
                 const data = await response.json();
                 if (data.success && data.data) {
                     const status = data.data;
-                    
+                    console.log('[pollPlaybackStatus] status:', status); // DEBUG
                     // Sync frontend playing state with backend
                     const backendIsPlaying = status.is_playing;
                     if (backendIsPlaying !== this.isPlaying) {
@@ -1325,103 +1325,134 @@ class DMXConsole {
     }
 
     updatePlaybackInfo() {
-        const playbackInfo = document.getElementById('playback-info');
-        if (playbackInfo) {
-            if (this.isPlaying) {
-                let playingName = 'Unknown';
-                let additionalInfo = '';
-                
-                if (this.currentProgrammableScene) {
-                    const programmableScene = this.programmableScenes.find(s => s.id === this.currentProgrammableScene);
-                    playingName = programmableScene ? programmableScene.name : this.currentProgrammableScene;
-                    additionalInfo = `<p><strong>Type:</strong> Programmable Scene</p>`;
-                } else if (this.currentSequence) {
-                    const sequence = this.sequences.find(s => s.id === this.currentSequence);
-                    playingName = sequence ? sequence.name : this.currentSequence;
-                    additionalInfo = `
-                        <p><strong>Type:</strong> Sequence</p>
-                        <p><strong>Current Step:</strong> ${this.currentStep + 1} / ${sequence?.steps?.length || 0}</p>
-                    `;
-                } else if (this.currentScene) {
-                    const scene = this.scenes.find(s => s.id === this.currentScene);
-                    playingName = scene ? scene.name : this.currentScene;
-                    additionalInfo = `<p><strong>Type:</strong> Scene</p>`;
-                }
-                
-                playbackInfo.innerHTML = `
-                    <p><strong>Playing:</strong> ${playingName}</p>
-                    ${additionalInfo}
-                `;
-            } else {
-                playbackInfo.innerHTML = `
-                    <p><strong>Stopped</strong></p>
-                `;
+        const currentPlayback = document.getElementById('current-playback');
+        const playbackType = document.getElementById('playback-type');
+        const playbackStatus = document.getElementById('playback-status');
+        console.log('[updatePlaybackInfo] isPlaying:', this.isPlaying, 'currentScene:', this.currentScene, 'currentSequence:', this.currentSequence, 'currentProgrammableScene:', this.currentProgrammableScene); // DEBUG
+        if (this.isPlaying) {
+            let playingName = 'Unknown';
+            let typeName = 'Unknown';
+            
+            if (this.currentProgrammableScene) {
+                const programmableScene = this.programmableScenes.find(s => s.id === this.currentProgrammableScene);
+                playingName = programmableScene ? programmableScene.name : this.currentProgrammableScene;
+                typeName = 'Programmable Scene';
+            } else if (this.currentSequence) {
+                const sequence = this.sequences.find(s => s.id === this.currentSequence);
+                playingName = sequence ? sequence.name : this.currentSequence;
+                typeName = 'Sequence';
+            } else if (this.currentScene) {
+                const scene = this.scenes.find(s => s.id === this.currentScene);
+                playingName = scene ? scene.name : this.currentScene;
+                typeName = 'Scene';
             }
+            
+            if (currentPlayback) currentPlayback.textContent = playingName;
+            if (playbackType) playbackType.textContent = typeName;
+            if (playbackStatus) playbackStatus.textContent = 'Playing';
+        } else {
+            if (currentPlayback) currentPlayback.textContent = 'None';
+            if (playbackType) playbackType.textContent = 'None';
+            if (playbackStatus) playbackStatus.textContent = 'Stopped';
+        }
+    }
+
+    updateSequenceStepInfo(stepNumber, stepData) {
+        // This method will be called to update the sequence step info display
+        this.currentStep = stepNumber;
+        this.currentStepData = stepData;
+        if (this.currentStepData) {
+            this.showSequenceStepInfo();
         }
     }
 
     showSequenceStepInfo() {
         const stepInfo = document.getElementById('sequence-step-info');
+        const currentStepNumber = document.getElementById('current-step-number');
+        const currentStepScene = document.getElementById('current-step-scene');
+        const currentStepDuration = document.getElementById('current-step-duration');
+        const stepProgressFill = document.getElementById('step-progress-fill');
+        
         if (stepInfo) {
-            if (this.currentStepData) {
-                stepInfo.innerHTML = `
-                    <p><strong>Step ${this.currentStep + 1}:</strong> ${this.currentStepData.name || 'Unknown Step'}</p>
-                    <p><strong>Duration:</strong> ${this.currentStepData.duration || 0}ms</p>
-                    <p><strong>Fade Time:</strong> ${this.currentStepData.fade_time || 0}ms</p>
-                    <p><strong>Blackout:</strong> ${this.currentStepData.blackout ? 'Yes' : 'No'}</p>
-                    <p><strong>Start Time:</strong> ${this.currentStepData.start_time || 'N/A'}</p>
-                    <p><strong>End Time:</strong> ${this.currentStepData.end_time || 'N/A'}</p>
-                `;
-            } else {
-                stepInfo.innerHTML = `
-                    <p><strong>No current step data available.</strong></p>
-                `;
+            stepInfo.style.display = 'block';
+        }
+        
+        if (this.currentStepData) {
+            if (currentStepNumber) {
+                currentStepNumber.textContent = `${this.currentStep + 1}`;
             }
+            if (currentStepScene) {
+                currentStepScene.textContent = this.currentStepData.scene_name || 'Unknown';
+            }
+            if (currentStepDuration) {
+                const duration = this.currentStepData.duration || 0;
+                currentStepDuration.textContent = `${duration}ms`;
+            }
+            if (stepProgressFill) {
+                const progress = this.currentStepData.progress || 0;
+                stepProgressFill.style.width = `${progress}%`;
+            }
+        } else {
+            if (currentStepNumber) currentStepNumber.textContent = '-';
+            if (currentStepScene) currentStepScene.textContent = '-';
+            if (currentStepDuration) currentStepDuration.textContent = '-';
+            if (stepProgressFill) stepProgressFill.style.width = '0%';
         }
     }
 
     hideSequenceStepInfo() {
         const stepInfo = document.getElementById('sequence-step-info');
         if (stepInfo) {
-            stepInfo.innerHTML = `
-                <p><strong>No current step data available.</strong></p>
-            `;
+            stepInfo.style.display = 'none';
         }
     }
 
     showProgrammableSceneInfo() {
         const stepInfo = document.getElementById('sequence-step-info');
-        if (stepInfo && this.currentStepData) {
-            stepInfo.innerHTML = `
-                <p><strong>Programmable Scene:</strong> ${this.currentStepData.scene_name || 'Unknown'}</p>
-                <p><strong>Duration:</strong> ${this.currentStepData.duration || 0}s</p>
-                <p><strong>Progress:</strong> <span id="programmable-progress">${this.currentStepData.progress || 0}%</span></p>
-                <div class="progress-bar">
-                    <div class="progress-fill" id="programmable-progress-bar" style="width: ${this.currentStepData.progress || 0}%"></div>
-                </div>
-                <p><strong>Expressions:</strong> ${Object.keys(this.currentStepData.expressions || {}).length} channels</p>
-            `;
+        const currentStepNumber = document.getElementById('current-step-number');
+        const currentStepScene = document.getElementById('current-step-scene');
+        const currentStepDuration = document.getElementById('current-step-duration');
+        const stepProgressFill = document.getElementById('step-progress-fill');
+        
+        if (stepInfo) {
+            stepInfo.style.display = 'block';
+        }
+        
+        if (this.currentStepData) {
+            if (currentStepNumber) {
+                currentStepNumber.textContent = '1';
+            }
+            if (currentStepScene) {
+                currentStepScene.textContent = this.currentStepData.scene_name || 'Unknown';
+            }
+            if (currentStepDuration) {
+                const duration = this.currentStepData.duration || 0;
+                currentStepDuration.textContent = `${duration}s`;
+            }
+            if (stepProgressFill) {
+                const progress = this.currentStepData.progress || 0;
+                stepProgressFill.style.width = `${progress}%`;
+            }
+        } else {
+            if (currentStepNumber) currentStepNumber.textContent = '-';
+            if (currentStepScene) currentStepScene.textContent = '-';
+            if (currentStepDuration) currentStepDuration.textContent = '-';
+            if (stepProgressFill) stepProgressFill.style.width = '0%';
         }
     }
 
     hideProgrammableSceneInfo() {
         const stepInfo = document.getElementById('sequence-step-info');
         if (stepInfo) {
-            stepInfo.innerHTML = `
-                <p><strong>No current step data available.</strong></p>
-            `;
+            stepInfo.style.display = 'none';
         }
     }
 
     updateProgrammableSceneProgress(progress) {
-        const progressText = document.getElementById('programmable-progress');
-        const progressBar = document.getElementById('programmable-progress-bar');
+        const stepProgressFill = document.getElementById('step-progress-fill');
         
-        if (progressText) {
-            progressText.textContent = `${Math.round(progress)}%`;
-        }
-        if (progressBar) {
-            progressBar.style.width = `${progress}%`;
+        if (stepProgressFill) {
+            stepProgressFill.style.width = `${progress}%`;
         }
     }
 
