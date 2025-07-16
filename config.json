@@ -182,5 +182,45 @@
         "duration": 0.5
       }
     ]
+  },
+  "programmable_scenes": {
+    "hsv_fade_example": {
+      "name": "HSV Fade Example",
+      "description": "HSV color fade over 360\u00b0 in 10 seconds for RGB channels 7,8,9 with brightness on channel 5",
+      "duration": 10000,
+      "loop": true,
+      "expressions": {
+        "1": "255*sin(t)",
+        "3": "255*sin(-t)",
+        "5": "255",
+        "7": "hsv_to_rgb(t * 36, 1, 1)[0]",
+        "8": "hsv_to_rgb(t * 36, 1, 1)[1]",
+        "9": "hsv_to_rgb(t * 36, 1, 1)[2]"
+      }
+    },
+    "sine_wave_fade": {
+      "name": "Sine Wave Fade",
+      "description": "Sine wave fade on channel 1, cosine wave on channel 2",
+      "duration": 5000,
+      "loop": true,
+      "expressions": {
+        "1": "128 + 127 * sin(t * 2)",
+        "2": "128 + 127 * cos(t * 2)"
+      }
+    },
+    "pulse_effect": {
+      "name": "Pulse Effect",
+      "description": "Pulsing effect on channel 3 with exponential fade",
+      "duration": 3000,
+      "loop": true,
+      "expressions": {
+        "3": "255 * exp(-abs(sin(t * 3)))"
+      }
+    }
+  },
+  "fallback": {
+    "type": "programmable",
+    "id": "hsv_fade_example",
+    "enabled": true
   }
 }

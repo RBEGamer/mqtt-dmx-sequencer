@@ -55,6 +55,11 @@
     "enabled": true,
     "mappings": {}
   },
+  "programmable_scenes": {
+    "enabled": true,
+    "default_duration": 10.0,
+    "default_fps": 30
+  },
   "fallback": {
     "enabled": false,
     "type": "scene",

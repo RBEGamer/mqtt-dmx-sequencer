@@ -7,6 +7,8 @@ import paho.mqtt.client as mqtt
 import os
 import signal
 import sys
+import math
+import re
 from dmx_senders import DMXManager, ArtNetSender, E131Sender, TestSender
 from config_manager import ConfigManager
 
@@ -18,6 +20,97 @@ except ImportError:
     FLASK_AVAILABLE = False
     print("Warning: Flask not available. Web server functionality will be disabled.")
 
+class ProgrammableSceneEvaluator:
+    """Safe mathematical expression evaluator for programmable scenes"""
+    
+    def __init__(self):
+        # Define safe mathematical functions and constants
+        self.safe_globals = {
+            'abs': abs,
+            'round': round,
+            'min': min,
+            'max': max,
+            'sin': math.sin,
+            'cos': math.cos,
+            'tan': math.tan,
+            'pi': math.pi,
+            'e': math.e,
+            'sqrt': math.sqrt,
+            'pow': pow,
+            'floor': math.floor,
+            'ceil': math.ceil,
+            'log': math.log,
+            'exp': math.exp,
+            'mod': lambda x, y: x % y,
+            'clamp': lambda x, min_val, max_val: max(min_val, min(max_val, x)),
+            'hsv_to_rgb': self.hsv_to_rgb
+        }
+    
+    def hsv_to_rgb(self, h, s, v):
+        """Convert HSV to RGB values (0-255)"""
+        h = h % 360
+        s = max(0, min(1, s))
+        v = max(0, min(1, v))
+        
+        c = v * s
+        x = c * (1 - abs((h / 60) % 2 - 1))
+        m = v - c
+        
+        if 0 <= h < 60:
+            r, g, b = c, x, 0
+        elif 60 <= h < 120:
+            r, g, b = x, c, 0
+        elif 120 <= h < 180:
+            r, g, b = 0, c, x
+        elif 180 <= h < 240:
+            r, g, b = 0, x, c
+        elif 240 <= h < 300:
+            r, g, b = x, 0, c
+        else:  # 300 <= h < 360
+            r, g, b = c, 0, x
+        
+        return (int((r + m) * 255), int((g + m) * 255), int((b + m) * 255))
+    
+    def evaluate_expression(self, expression, time_seconds, channel):
+        """Evaluate a mathematical expression safely"""
+        try:
+            import re
+            
+            # Replace variables using regex to avoid corrupting function names
+            expression = re.sub(r'\btime\b', str(time_seconds), expression)
+            expression = re.sub(r'\bt\b', str(time_seconds), expression)
+            expression = re.sub(r'\bchannel\b', str(channel), expression)
+            expression = re.sub(r'\bch\b', str(channel), expression)
+            
+            # Create local variables
+            locals_dict = {
+                'time': time_seconds,
+                't': time_seconds,
+                'channel': channel,
+                'ch': channel
+            }
+            
+            # Evaluate the expression
+            result = eval(expression, {"__builtins__": {}}, {**self.safe_globals, **locals_dict})
+            
+            # Handle tuple results (from hsv_to_rgb)
+            if isinstance(result, tuple):
+                # For RGB channels, return the appropriate component
+                if channel == 7:  # Red channel
+                    return max(0, min(255, int(round(result[0]))))
+                elif channel == 8:  # Green channel
+                    return max(0, min(255, int(round(result[1]))))
+                elif channel == 9:  # Blue channel
+                    return max(0, min(255, int(round(result[2]))))
+                else:
+                    return 0
+            
+            # Clamp result to 0-255 range for DMX
+            return max(0, min(255, int(round(result))))
+            
+        except Exception as e:
+            print(f"Error evaluating expression '{expression}': {e}")
+            return 0
 
 class MQTTDMXSequencer:
     def __init__(self, config_path, settings_path=None, enable_web_server=None, web_port=None):
@@ -37,6 +130,7 @@ class MQTTDMXSequencer:
         self.current_step_index = 0
         self.current_step_data = None
         self.current_scene_playback = None
+        self.current_programmable_scene_playback = None
         self.playback_start_time = None
         self.playback_paused = False
         self.playback_pause_time = None
@@ -54,6 +148,11 @@ class MQTTDMXSequencer:
         self.fallback_config = self.config.get('fallback', {})
         self.fallback_timer = None
         print(f"Loaded fallback configuration: {self.fallback_config}")
+        
+        # Programmable scenes
+        self.programmable_scenes_config = self.config_manager.settings.get('programmable_scenes', {'enabled': True, 'default_duration': 10.0, 'default_fps': 30})
+        self.programmable_scenes = self.config.get('programmable_scenes', {})
+        self.programmable_scene_evaluator = ProgrammableSceneEvaluator()
         
         # Web server settings from config or command line
         web_config = self.config_manager.get_web_server_config()
@@ -80,7 +179,7 @@ class MQTTDMXSequencer:
             self.setup_web_server()
         elif self.enable_web_server and not FLASK_AVAILABLE:
             print("Warning: Web server requested but Flask not available")
-
+        
         self.dmx_retransmission_thread = None
         self.dmx_retransmission_stop = threading.Event()
         self.dmx_retransmission_settings = self.config_manager.settings.get('dmx_retransmission', {'enabled': False, 'interval': 5.0})
@@ -1005,6 +1104,40 @@ class MQTTDMXSequencer:
                     status["playback_paused"] = self.playback_paused
                     status["elapsed_time"] = elapsed_time
                 
+                elif self.current_programmable_scene_playback:
+                    status["is_playing"] = True
+                    scene_id = self.current_programmable_scene_playback.get('scene_id', 'Unknown')
+                    status["current_programmable_scene"] = scene_id
+                    
+                    # Get scene name from config
+                    scene_name = scene_id
+                    if scene_id in self.programmable_scenes:
+                        scene_name = self.programmable_scenes[scene_id].get('name', scene_id)
+                    status["current_scene"] = scene_name  # Use standard field for consistency
+                    
+                    status["playback_paused"] = self.playback_paused
+                    status["elapsed_time"] = elapsed_time
+                    
+                    # Calculate progress for programmable scenes
+                    duration = self.current_programmable_scene_playback.get('duration', 0)
+                    status["scene_duration"] = duration
+                    status["total_duration"] = duration
+                    status["scene_loop"] = self.current_programmable_scene_playback.get('loop', False)
+                    
+                    if duration > 0:
+                        # Calculate progress within the current loop
+                        loop_time = elapsed_time % duration if status["scene_loop"] else elapsed_time
+                        progress = min(100.0, (loop_time / duration) * 100) if duration > 0 else 0
+                        status["step_progress"] = progress
+                        
+                        # Add step data for consistency with sequences
+                        status["step_data"] = {
+                            "scene_name": scene_name,
+                            "duration": duration,
+                            "progress": progress,
+                            "expressions": self.current_programmable_scene_playback.get('expressions', {})
+                        }
+                
                 return jsonify({
                     "success": True,
                     "data": status
@@ -1018,18 +1151,34 @@ class MQTTDMXSequencer:
 
         @self.flask_app.route('/api/playback/stop', methods=['POST', 'GET'])
         def stop_playback():
-            """Stop the current sequence playback"""
+            """Stop the current playback"""
             try:
-                stopped = self.stop_sequence_playback()
+                stopped = False
+                
+                # Stop sequence playback
+                if self.current_sequence_playback:
+                    self.stop_sequence_playback()
+                    stopped = True
+                
+                # Stop programmable scene playback
+                if self.current_programmable_scene_playback:
+                    self.stop_programmable_scene_playback()
+                    stopped = True
+                
+                # Stop scene playback
+                if self.current_scene_playback:
+                    self.current_scene_playback = None
+                    stopped = True
+                
                 if stopped:
                     return jsonify({
                         "success": True,
-                        "message": "Sequence playback stopped"
+                        "message": "Playback stopped"
                     })
                 else:
                     return jsonify({
                         "success": False,
-                        "message": "No sequence playback is currently active"
+                        "message": "No playback is currently active"
                     }), 404
             except Exception as e:
                 return jsonify({
@@ -1149,14 +1298,184 @@ class MQTTDMXSequencer:
             except Exception as e:
                 return jsonify({'success': False, 'error': str(e)}), 500
 
+        # Programmable Scenes API endpoints
+        @self.flask_app.route('/api/programmable', methods=['GET'])
+        def get_programmable_scenes():
+            """Get all programmable scenes"""
+            try:
+                # Convert to list format for frontend
+                scenes_list = []
+                for scene_id, scene_data in self.programmable_scenes.items():
+                    scenes_list.append({
+                        'id': scene_id,
+                        'name': scene_data.get('name', scene_id),
+                        'description': scene_data.get('description', ''),
+                        'duration': scene_data.get('duration', 10000),
+                        'loop': scene_data.get('loop', False),
+                        'expressions': scene_data.get('expressions', {})
+                    })
+                return jsonify({
+                    "success": True,
+                    "data": scenes_list
+                })
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/programmable', methods=['POST'])
+        def create_programmable_scene():
+            """Create a new programmable scene"""
+            try:
+                data = request.get_json()
+                
+                if not data or 'name' not in data:
+                    return jsonify({
+                        "success": False,
+                        "error": "Missing required field: name"
+                    }), 400
+                
+                scene_name = data['name'].lower().replace(' ', '_')
+                if scene_name in self.programmable_scenes:
+                    return jsonify({
+                        "success": False,
+                        "error": f"Programmable scene '{scene_name}' already exists"
+                    }), 400
+                
+                # Create new programmable scene
+                self.programmable_scenes[scene_name] = {
+                    'name': data['name'],
+                    'description': data.get('description', ''),
+                    'duration': data.get('duration', 10000),
+                    'loop': data.get('loop', False),
+                    'expressions': data.get('expressions', {})
+                }
+                
+                # Save to config
+                self.config['programmable_scenes'] = self.programmable_scenes
+                self.save_config()
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Programmable scene '{scene_name}' created successfully",
+                    "data": self.programmable_scenes[scene_name]
+                })
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/programmable/<scene_id>', methods=['PUT'])
+        def update_programmable_scene(scene_id):
+            """Update a programmable scene"""
+            try:
+                if scene_id not in self.programmable_scenes:
+                    return jsonify({
+                        "success": False,
+                        "error": f"Programmable scene '{scene_id}' not found"
+                    }), 404
+                
+                data = request.get_json()
+                
+                # Update scene data
+                if 'name' in data:
+                    self.programmable_scenes[scene_id]['name'] = data['name']
+                if 'description' in data:
+                    self.programmable_scenes[scene_id]['description'] = data['description']
+                if 'duration' in data:
+                    self.programmable_scenes[scene_id]['duration'] = data['duration']
+                if 'loop' in data:
+                    self.programmable_scenes[scene_id]['loop'] = data['loop']
+                if 'expressions' in data:
+                    self.programmable_scenes[scene_id]['expressions'] = data['expressions']
+                
+                # Save to config
+                self.config['programmable_scenes'] = self.programmable_scenes
+                self.save_config()
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Programmable scene '{scene_id}' updated successfully",
+                    "data": self.programmable_scenes[scene_id]
+                })
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/programmable/<scene_id>', methods=['DELETE'])
+        def delete_programmable_scene(scene_id):
+            """Delete a programmable scene"""
+            try:
+                if scene_id not in self.programmable_scenes:
+                    return jsonify({
+                        "success": False,
+                        "error": f"Programmable scene '{scene_id}' not found"
+                    }), 404
+                
+                # Stop playback if this scene is currently playing
+                if (self.current_programmable_scene_playback and 
+                    self.current_programmable_scene_playback.get('scene_id') == scene_id):
+                    self.stop_programmable_scene_playback()
+                
+                # Delete the scene
+                del self.programmable_scenes[scene_id]
+                
+                # Save to config
+                self.config['programmable_scenes'] = self.programmable_scenes
+                self.save_config()
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Programmable scene '{scene_id}' deleted successfully"
+                })
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.flask_app.route('/api/programmable/<scene_id>/play', methods=['POST'])
+        def play_programmable_scene_api(scene_id):
+            """Play a programmable scene"""
+            try:
+                if scene_id not in self.programmable_scenes:
+                    return jsonify({
+                        "success": False,
+                        "error": f"Programmable scene '{scene_id}' not found"
+                    }), 404
+                
+                # Play the programmable scene
+                self.play_programmable_scene(scene_id)
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Programmable scene '{scene_id}' started"
+                })
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
     def save_config(self):
         """Save current configuration to file"""
         try:
-            config_dir = os.path.dirname(os.path.abspath(__file__))
-            config_path = os.path.join(config_dir, 'config.json')
+            # Use the same path that was used to load the config
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(script_dir)
+            config_path = os.path.join(project_root, 'config.json')
             
             with open(config_path, 'w') as f:
                 json.dump(self.config, f, indent=2)
+            print(f"Configuration saved to: {config_path}")
             return True
         except Exception as e:
             print(f"Error saving configuration: {e}")
@@ -1536,18 +1855,35 @@ class MQTTDMXSequencer:
 
     def stop_sequence_playback(self):
         """Stop the current sequence playback"""
-        if self.current_sequence_playback:
-            print("Stopping sequence playback...")
+        if self.current_sequence_playback or self.current_scene_playback:
             self.current_sequence_playback = None
+            self.current_scene_playback = None
             self.current_step_index = 0
             self.current_step_data = None
-            # Blackout all DMX channels when stopping
-            self.dmx_manager.blackout()
+            self.playback_start_time = None
+            self.playback_paused = False
+            self.playback_pause_time = None
+            self.total_pause_time = 0
+            print("Playback stopped")
+            return True
+        return False
+
+    def stop_programmable_scene_playback(self):
+        """Stop the current programmable scene playback"""
+        if self.current_programmable_scene_playback:
+            self.current_programmable_scene_playback = None
+            self.playback_start_time = None
+            self.playback_paused = False
+            self.playback_pause_time = None
+            self.total_pause_time = 0
+            print("Programmable scene playback stopped")
             return True
         return False
 
     def play_scene(self, scene_name, transition_time=0.0):
         """Play a scene with optional transition time"""
+        # Always stop any running programmable scene
+        self.stop_programmable_scene_playback()
         if scene_name not in self.config.get('scenes', {}):
             print(f"Scene '{scene_name}' not found")
             return
@@ -1590,6 +1926,8 @@ class MQTTDMXSequencer:
 
     def play_sequence(self, sequence, loop=False):
         """Play a sequence with optional looping"""
+        # Always stop any running programmable scene
+        self.stop_programmable_scene_playback()
         sequences_config = self.config_manager.get_sequences_config()
         default_duration = sequences_config.get('default_duration', 1.0)
         auto_play = sequences_config.get('auto_play', True)
@@ -1709,6 +2047,88 @@ class MQTTDMXSequencer:
                 self.trigger_fallback()
                 # Also trigger sequence fallback
                 self.trigger_sequence_fallback()
+        
+        threading.Thread(target=run).start()
+
+    def play_programmable_scene(self, scene_id):
+        """Play a programmable scene with mathematical expressions"""
+        if scene_id not in self.programmable_scenes:
+            print(f"Programmable scene '{scene_id}' not found")
+            return
+            
+        scene_data = self.programmable_scenes[scene_id]
+        duration = scene_data.get('duration', 10000) / 1000.0  # Convert ms to seconds
+        max_fps = 100  # Maximum 100Hz update rate
+        loop = scene_data.get('loop', False)
+        expressions = scene_data.get('expressions', {})
+        
+        print(f"Playing programmable scene: {scene_id} (duration: {duration}s, max_fps: {max_fps}, loop: {loop})")
+        
+        # Set programmable scene playback state
+        self.current_programmable_scene_playback = {
+            'scene_id': scene_id,
+            'scene_data': scene_data,
+            'duration': duration,
+            'fps': max_fps,
+            'loop': loop,
+            'expressions': expressions
+        }
+        self.current_sequence_playback = None  # Clear sequence playback
+        self.current_scene_playback = None  # Clear scene playback
+        self.playback_start_time = time.time()
+        self.playback_paused = False
+        self.total_pause_time = 0
+        
+        def run():
+            frame_interval = 1.0 / max_fps  # 10ms intervals for 100Hz
+            start_time = time.time()
+            previous_channels = {}  # Track previous channel values
+            
+            while not self.shutdown_requested and self.current_programmable_scene_playback:
+                current_time = time.time() - start_time
+                
+                # Check if scene duration exceeded (unless looping)
+                if not loop and current_time >= duration:
+                    break
+                
+                # Calculate time within the scene (for looping)
+                scene_time = current_time % duration if loop else current_time
+                
+                # Evaluate expressions for each channel
+                channels = {}
+                for channel_str, expression in expressions.items():
+                    try:
+                        channel = int(channel_str)
+                        value = self.programmable_scene_evaluator.evaluate_expression(expression, scene_time, channel)
+                        channels[channel] = value
+                    except (ValueError, TypeError) as e:
+                        print(f"Invalid channel number or expression for channel {channel_str}: {e}")
+                        continue
+                
+                # Check if any channel values have changed
+                channels_changed = False
+                for channel, value in channels.items():
+                    if channel not in previous_channels or abs(previous_channels[channel] - value) > 0.1:  # Small threshold for floating point comparison
+                        channels_changed = True
+                        break
+                
+                # Only send DMX if values have changed
+                if channels_changed and channels:
+                    self.set_channels_with_followers(channels)
+                    self.dmx_manager.send()
+                    # Update previous channels
+                    previous_channels.update(channels)
+                
+                # Wait for next frame
+                time.sleep(frame_interval)
+            
+            # Clear programmable scene playback state when finished
+            self.current_programmable_scene_playback = None
+            print(f"Programmable scene '{scene_id}' finished")
+            
+            # Trigger fallback for non-looping scenes
+            if not loop:
+                self.trigger_fallback()
         
         threading.Thread(target=run).start()
 

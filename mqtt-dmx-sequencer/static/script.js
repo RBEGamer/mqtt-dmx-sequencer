@@ -8,6 +8,7 @@ class DMXConsole {
         this.sequences = [];
         this.currentSequence = null;
         this.currentScene = null;
+        this.currentProgrammableScene = null;
         this.isPlaying = false;
         this.currentStep = 0;
         this.currentStepData = null;
@@ -18,6 +19,7 @@ class DMXConsole {
         this.autostartConfig = null;
         this.mqttPassthroughEnabled = false;
         this.fallbackConfig = null;
+        this.programmableScenes = [];
         
         this.init();
     }
@@ -32,6 +34,7 @@ class DMXConsole {
         this.testConnection();
         this.loadScenes();
         this.loadSequences();
+        this.loadProgrammableScenes();
         this.loadAutostartConfig();
         this.loadFallbackConfig();
         // DMX retransmission settings
@@ -507,20 +510,51 @@ class DMXConsole {
                         this.updatePlaybackInfo();
                     }
                     
-                    // Update current step info if available
-                    if (status.current_step !== undefined && status.current_step_data) {
+                    // Handle sequence playback
+                    if (status.current_sequence && status.current_step !== undefined && status.step_data) {
+                        this.currentSequence = status.current_sequence;
+                        this.currentScene = null;
+                        this.currentProgrammableScene = null;
                         this.currentStep = status.current_step;
-                        this.currentStepData = status.current_step_data;
+                        this.currentStepData = status.step_data;
                         this.updateSequenceStepInfo(this.currentStep, this.currentStepData);
                         this.showSequenceStepInfo();
+                        this.hideProgrammableSceneInfo();
                         
                         // Start progress tracking for current step
-                        if (status.current_step_data.duration) {
-                            this.startStepProgress(status.current_step_data);
+                        if (status.step_data.duration) {
+                            this.startStepProgress(status.step_data);
                         }
-                    } else if (!backendIsPlaying) {
-                        // Hide step info if not playing
+                    }
+                    // Handle programmable scene playback
+                    else if (status.current_programmable_scene && status.step_data) {
+                        this.currentProgrammableScene = status.current_programmable_scene;
+                        this.currentScene = null;
+                        this.currentSequence = null;
+                        this.currentStepData = status.step_data;
+                        this.showProgrammableSceneInfo();
                         this.hideSequenceStepInfo();
+                        
+                        // Update progress bar for programmable scene
+                        if (status.step_progress !== undefined) {
+                            this.updateProgrammableSceneProgress(status.step_progress);
+                        }
+                    }
+                    // Handle regular scene playback
+                    else if (status.current_scene && !status.current_sequence && !status.current_programmable_scene) {
+                        this.currentScene = status.current_scene;
+                        this.currentSequence = null;
+                        this.currentProgrammableScene = null;
+                        this.hideSequenceStepInfo();
+                        this.hideProgrammableSceneInfo();
+                    }
+                    else if (!backendIsPlaying) {
+                        // Hide all info if not playing
+                        this.hideSequenceStepInfo();
+                        this.hideProgrammableSceneInfo();
+                        this.currentScene = null;
+                        this.currentSequence = null;
+                        this.currentProgrammableScene = null;
                     }
                 }
             }
@@ -936,6 +970,9 @@ class DMXConsole {
 
     async playScene(sceneId) {
         try {
+            // Always stop any current playback first
+            await fetch(`${this.apiUrl}/playback/stop`, { method: 'POST' });
+
             // Find the scene data to get channel values
             const scene = this.scenes.find(s => s.id === sceneId);
             if (!scene) {
@@ -952,6 +989,7 @@ class DMXConsole {
                 // Set current scene and update playback state
                 this.currentScene = sceneId;
                 this.currentSequence = null;
+                this.currentProgrammableScene = null;
                 this.isPlaying = true;
                 
                 // Update current channels with scene values
@@ -1184,7 +1222,9 @@ class DMXConsole {
 
     async playSequence(sequenceId) {
         try {
-            // Find the sequence data to get channel values
+            // Always stop any current playback first
+            await fetch(`${this.apiUrl}/playback/stop`, { method: 'POST' });
+
             const sequence = this.sequences.find(s => s.id === sequenceId);
             if (!sequence) {
                 this.showNotification('Sequence not found', 'error');
@@ -1288,11 +1328,29 @@ class DMXConsole {
         const playbackInfo = document.getElementById('playback-info');
         if (playbackInfo) {
             if (this.isPlaying) {
+                let playingName = 'Unknown';
+                let additionalInfo = '';
+                
+                if (this.currentProgrammableScene) {
+                    const programmableScene = this.programmableScenes.find(s => s.id === this.currentProgrammableScene);
+                    playingName = programmableScene ? programmableScene.name : this.currentProgrammableScene;
+                    additionalInfo = `<p><strong>Type:</strong> Programmable Scene</p>`;
+                } else if (this.currentSequence) {
+                    const sequence = this.sequences.find(s => s.id === this.currentSequence);
+                    playingName = sequence ? sequence.name : this.currentSequence;
+                    additionalInfo = `
+                        <p><strong>Type:</strong> Sequence</p>
+                        <p><strong>Current Step:</strong> ${this.currentStep + 1} / ${sequence?.steps?.length || 0}</p>
+                    `;
+                } else if (this.currentScene) {
+                    const scene = this.scenes.find(s => s.id === this.currentScene);
+                    playingName = scene ? scene.name : this.currentScene;
+                    additionalInfo = `<p><strong>Type:</strong> Scene</p>`;
+                }
+                
                 playbackInfo.innerHTML = `
-                    <p><strong>Playing:</strong> ${this.currentScene ? this.scenes.find(s => s.id === this.currentScene)?.name : this.sequences.find(s => s.id === this.currentSequence)?.name || 'Unknown'}</p>
-                    <p><strong>Current Step:</strong> ${this.currentStep + 1} / ${this.sequences.find(s => s.id === this.currentSequence)?.steps?.length || 0}</p>
-                    <p><strong>Total Duration:</strong> ${this.sequences.find(s => s.id === this.currentSequence)?.total_duration || 0}ms</p>
-                    <p><strong>Elapsed Time:</strong> ${this.sequences.find(s => s.id === this.currentSequence)?.elapsed_time || 0}ms</p>
+                    <p><strong>Playing:</strong> ${playingName}</p>
+                    ${additionalInfo}
                 `;
             } else {
                 playbackInfo.innerHTML = `
@@ -1328,6 +1386,42 @@ class DMXConsole {
             stepInfo.innerHTML = `
                 <p><strong>No current step data available.</strong></p>
             `;
+        }
+    }
+
+    showProgrammableSceneInfo() {
+        const stepInfo = document.getElementById('sequence-step-info');
+        if (stepInfo && this.currentStepData) {
+            stepInfo.innerHTML = `
+                <p><strong>Programmable Scene:</strong> ${this.currentStepData.scene_name || 'Unknown'}</p>
+                <p><strong>Duration:</strong> ${this.currentStepData.duration || 0}s</p>
+                <p><strong>Progress:</strong> <span id="programmable-progress">${this.currentStepData.progress || 0}%</span></p>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="programmable-progress-bar" style="width: ${this.currentStepData.progress || 0}%"></div>
+                </div>
+                <p><strong>Expressions:</strong> ${Object.keys(this.currentStepData.expressions || {}).length} channels</p>
+            `;
+        }
+    }
+
+    hideProgrammableSceneInfo() {
+        const stepInfo = document.getElementById('sequence-step-info');
+        if (stepInfo) {
+            stepInfo.innerHTML = `
+                <p><strong>No current step data available.</strong></p>
+            `;
+        }
+    }
+
+    updateProgrammableSceneProgress(progress) {
+        const progressText = document.getElementById('programmable-progress');
+        const progressBar = document.getElementById('programmable-progress-bar');
+        
+        if (progressText) {
+            progressText.textContent = `${Math.round(progress)}%`;
+        }
+        if (progressBar) {
+            progressBar.style.width = `${progress}%`;
         }
     }
 
@@ -1543,6 +1637,269 @@ class DMXConsole {
             `;
             stepsContainer.appendChild(stepDiv);
         });
+    }
+
+    // Programmable Scene Methods
+    async loadProgrammableScenes() {
+        try {
+            const response = await fetch(`${this.apiUrl}/programmable`);
+            if (response.ok) {
+                const data = await response.json();
+                this.programmableScenes = data.data || [];
+                this.renderProgrammableScenes();
+            }
+        } catch (error) {
+            console.error('Failed to load programmable scenes:', error);
+        }
+    }
+
+    renderProgrammableScenes() {
+        const container = document.getElementById('programmable-grid');
+        container.innerHTML = '';
+
+        this.programmableScenes.forEach(scene => {
+            const isAutostart = this.autostartConfig && this.autostartConfig.type === 'programmable' && this.autostartConfig.id === scene.id;
+            const isFallback = this.fallbackConfig && this.fallbackConfig.type === 'programmable' && this.fallbackConfig.id === scene.id;
+            
+            const card = document.createElement('div');
+            card.className = 'scene-card';
+            card.innerHTML = `
+                <div class="card-header">
+                    <h4>${scene.name}</h4>
+                    ${isAutostart ? '<div class="autostart-indicator" title="Autostart Enabled"><i class="fas fa-circle"></i></div>' : ''}
+                    ${isFallback ? '<div class="fallback-indicator" title="Fallback Enabled"><i class="fas fa-circle"></i></div>' : ''}
+                </div>
+                <p>${scene.description || 'No description'}</p>
+                <div class="card-actions">
+                    <button class="btn btn-primary" onclick="dmxConsole.playProgrammable('${scene.id}')">
+                        <i class="fas fa-play"></i> Play
+                    </button>
+                    <button class="btn btn-secondary" onclick="dmxConsole.openProgrammableEditor('${scene.id}')">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                    <button class="btn btn-danger" onclick="dmxConsole.deleteProgrammable('${scene.id}')">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </div>
+            `;
+            container.appendChild(card);
+        });
+    }
+
+    async playProgrammable(sceneId) {
+        try {
+            // Always stop any current playback first
+            await fetch(`${this.apiUrl}/playback/stop`, { method: 'POST' });
+
+            const scene = this.programmableScenes.find(s => s.id === sceneId);
+            if (!scene) {
+                this.showNotification('Programmable scene not found', 'error');
+                return;
+            }
+
+            const response = await fetch(`${this.apiUrl}/programmable/${sceneId}/play`, {
+                method: 'POST'
+            });
+            if (response.ok) {
+                this.isPlaying = true;
+                this.currentScene = sceneId;
+                this.currentSequence = null;
+                this.updatePlaybackInfo();
+                this.showNotification('Programmable scene started', 'success');
+            }
+        } catch (error) {
+            this.showNotification('Failed to play programmable scene', 'error');
+        }
+    }
+
+    async deleteProgrammable(sceneId) {
+        if (!confirm('Are you sure you want to delete this programmable scene?')) return;
+
+        try {
+            const response = await fetch(`${this.apiUrl}/programmable/${sceneId}`, {
+                method: 'DELETE'
+            });
+            if (response.ok) {
+                this.loadProgrammableScenes();
+                this.showNotification('Programmable scene deleted successfully', 'success');
+            }
+        } catch (error) {
+            this.showNotification('Failed to delete programmable scene', 'error');
+        }
+    }
+
+    openProgrammableEditor(sceneId = null) {
+        const modal = document.getElementById('programmable-editor');
+        const title = document.getElementById('programmable-editor-title');
+        
+        if (sceneId) {
+            title.textContent = 'Edit Programmable Scene';
+            modal.dataset.programmableId = sceneId;
+            
+            const scene = this.programmableScenes.find(s => s.id === sceneId);
+            if (scene) {
+                document.getElementById('programmable-name').value = scene.name;
+                document.getElementById('programmable-description').value = scene.description || '';
+                document.getElementById('programmable-duration').value = scene.duration || 5000;
+                document.getElementById('programmable-loop').checked = scene.loop || false;
+                
+                this.generateExpressionEditor(scene.expressions || {});
+            }
+            
+            document.getElementById('programmable-delete-btn').style.display = 'block';
+            this.updateProgrammableAutostartButton(sceneId);
+            this.updateProgrammableFallbackButton(sceneId);
+        } else {
+            title.textContent = 'New Programmable Scene';
+            delete modal.dataset.programmableId;
+            
+            document.getElementById('programmable-name').value = '';
+            document.getElementById('programmable-description').value = '';
+            document.getElementById('programmable-duration').value = 5000;
+            document.getElementById('programmable-loop').checked = false;
+            
+            this.generateExpressionEditor({});
+            
+            document.getElementById('programmable-delete-btn').style.display = 'none';
+            document.getElementById('programmable-autostart-btn').textContent = 'Set Autostart';
+            document.getElementById('programmable-fallback-btn').textContent = 'Set Fallback';
+        }
+        
+        modal.style.display = 'block';
+    }
+
+    closeProgrammableEditor() {
+        document.getElementById('programmable-editor').style.display = 'none';
+    }
+
+    generateExpressionEditor(expressions) {
+        const container = document.getElementById('expression-editor');
+        container.innerHTML = '';
+
+        for (let i = 1; i <= this.channelCount; i++) {
+            const expressionDiv = document.createElement('div');
+            expressionDiv.className = 'expression-item';
+            expressionDiv.innerHTML = `
+                <label for="expression-${i}">CH${i}:</label>
+                <input type="text" id="expression-${i}" class="expression-input" 
+                       placeholder="e.g., 255 * sin(t)" value="${expressions[i] || ''}" />
+            `;
+            container.appendChild(expressionDiv);
+        }
+    }
+
+    async saveProgrammable() {
+        const modal = document.getElementById('programmable-editor');
+        const sceneId = modal.dataset.programmableId;
+        const name = document.getElementById('programmable-name').value;
+        const description = document.getElementById('programmable-description').value;
+        const duration = parseInt(document.getElementById('programmable-duration').value);
+        const loop = document.getElementById('programmable-loop').checked;
+
+        if (!name.trim()) {
+            this.showNotification('Programmable scene name is required', 'error');
+            return;
+        }
+
+        const expressions = {};
+        for (let i = 1; i <= this.channelCount; i++) {
+            const expression = document.getElementById(`expression-${i}`).value.trim();
+            if (expression) {
+                expressions[i] = expression;
+            }
+        }
+
+        const sceneData = {
+            name: name,
+            description: description,
+            duration: duration,
+            loop: loop,
+            expressions: expressions
+        };
+
+        try {
+            let response;
+            if (sceneId) {
+                response = await fetch(`${this.apiUrl}/programmable/${sceneId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(sceneData)
+                });
+            } else {
+                response = await fetch(`${this.apiUrl}/programmable`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(sceneData)
+                });
+            }
+
+            if (response.ok) {
+                this.closeProgrammableEditor();
+                this.loadProgrammableScenes();
+                this.showNotification(`Programmable scene ${sceneId ? 'updated' : 'created'} successfully`, 'success');
+            } else {
+                throw new Error('Failed to save programmable scene');
+            }
+        } catch (error) {
+            this.showNotification('Failed to save programmable scene', 'error');
+        }
+    }
+
+    updateProgrammableAutostartButton(sceneId) {
+        const button = document.getElementById('programmable-autostart-btn');
+        const isAutostart = this.autostartConfig && this.autostartConfig.type === 'programmable' && this.autostartConfig.id === sceneId;
+        button.textContent = isAutostart ? 'Remove Autostart' : 'Set Autostart';
+        button.className = isAutostart ? 'btn btn-secondary btn-autostart active' : 'btn btn-secondary btn-autostart';
+    }
+
+    updateProgrammableFallbackButton(sceneId) {
+        const button = document.getElementById('programmable-fallback-btn');
+        const isFallback = this.fallbackConfig && this.fallbackConfig.type === 'programmable' && this.fallbackConfig.id === sceneId;
+        button.textContent = isFallback ? 'Remove Fallback' : 'Set Fallback';
+        button.className = isFallback ? 'btn btn-secondary btn-fallback active' : 'btn btn-secondary btn-fallback';
+    }
+
+    async toggleProgrammableAutostartFromEditor() {
+        const modal = document.getElementById('programmable-editor');
+        const sceneId = modal.dataset.programmableId;
+        if (!sceneId) return;
+
+        const isAutostart = this.autostartConfig && this.autostartConfig.type === 'programmable' && this.autostartConfig.id === sceneId;
+        
+        if (isAutostart) {
+            await this.disableAutostart();
+        } else {
+            await this.setAutostart('programmable', sceneId);
+        }
+        
+        this.updateProgrammableAutostartButton(sceneId);
+    }
+
+    async toggleProgrammableFallbackFromEditor() {
+        const modal = document.getElementById('programmable-editor');
+        const sceneId = modal.dataset.programmableId;
+        if (!sceneId) return;
+
+        const isFallback = this.fallbackConfig && this.fallbackConfig.type === 'programmable' && this.fallbackConfig.id === sceneId;
+        
+        if (isFallback) {
+            await this.disableFallback();
+        } else {
+            await this.setFallback('programmable', sceneId);
+        }
+        
+        this.updateProgrammableFallbackButton(sceneId);
+    }
+
+    async deleteProgrammableFromEditor() {
+        const modal = document.getElementById('programmable-editor');
+        const sceneId = modal.dataset.programmableId;
+        if (!sceneId) return;
+
+        if (confirm('Are you sure you want to delete this programmable scene?')) {
+            await this.deleteProgrammable(sceneId);
+            this.closeProgrammableEditor();
+        }
     }
 
     async loadFallbackConfig() {
@@ -1975,3 +2332,9 @@ function toggleSequenceFallback(id) { dmxConsole.toggleSequenceFallback(id); }
 function toggleSceneFallbackFromEditor() { dmxConsole.toggleSceneFallbackFromEditor(); }
 function toggleSequenceFallbackFromEditor() { dmxConsole.toggleSequenceFallbackFromEditor(); }
 function toggleSceneFallbackWithDelay(id) { dmxConsole.toggleSceneFallbackWithDelay(id); }
+function openProgrammableEditor(id) { dmxConsole.openProgrammableEditor(id); }
+function closeProgrammableEditor() { dmxConsole.closeProgrammableEditor(); }
+function saveProgrammable() { dmxConsole.saveProgrammable(); }
+function deleteProgrammableFromEditor() { dmxConsole.deleteProgrammableFromEditor(); }
+function toggleProgrammableAutostartFromEditor() { dmxConsole.toggleProgrammableAutostartFromEditor(); }
+function toggleProgrammableFallbackFromEditor() { dmxConsole.toggleProgrammableFallbackFromEditor(); }

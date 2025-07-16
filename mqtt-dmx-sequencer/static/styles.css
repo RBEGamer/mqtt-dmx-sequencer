@@ -929,3 +929,102 @@ body {
     color: #6c757d;
     font-style: italic;
 } 
+
+/* Programmable Scene Styles */
+.programmable-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+    padding: 16px;
+    overflow-y: auto;
+}
+
+.expression-editor {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #555;
+    border-radius: 6px;
+    padding: 12px;
+    background: #2a2a2a;
+}
+
+.expression-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding: 8px;
+    background: #333;
+    border-radius: 4px;
+}
+
+.expression-item:last-child {
+    margin-bottom: 0;
+}
+
+.expression-item label {
+    min-width: 50px;
+    font-size: 12px;
+    color: #ccc;
+    font-weight: bold;
+}
+
+.expression-input {
+    flex: 1;
+    background: #222;
+    border: 1px solid #555;
+    color: #fff;
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+}
+
+.expression-input:focus {
+    border-color: #00ff88;
+    outline: none;
+}
+
+.expression-input::placeholder {
+    color: #666;
+}
+
+.expression-help {
+    margin-top: 16px;
+    padding: 12px;
+    background: #2a2a2a;
+    border: 1px solid #555;
+    border-radius: 6px;
+}
+
+.expression-help h5 {
+    color: #00ff88;
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+
+.expression-help p {
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: #ccc;
+}
+
+.expression-help ul {
+    margin-left: 16px;
+    margin-bottom: 8px;
+}
+
+.expression-help li {
+    margin-bottom: 4px;
+    font-size: 12px;
+    color: #ccc;
+}
+
+.expression-help code {
+    background: #333;
+    color: #00ff88;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+}

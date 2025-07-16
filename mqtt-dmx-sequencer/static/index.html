@@ -56,6 +56,9 @@
                     <button class="panel-tab" data-panel="sequences">
                         <i class="fas fa-play-circle"></i> Sequences
                     </button>
+                    <button class="panel-tab" data-panel="programmable">
+                        <i class="fas fa-code"></i> Programmable
+                    </button>
                 </div>
 
                 <!-- Scenes Panel -->
@@ -83,6 +86,20 @@
                     
                     <div class="sequences-grid" id="sequences-grid">
                         <!-- Sequences will be loaded here -->
+                    </div>
+                </div>
+
+                <!-- Programmable Scenes Panel -->
+                <div id="programmable-panel" class="panel-content">
+                    <div class="panel-header">
+                        <h3>Programmable Scenes</h3>
+                        <button class="btn btn-primary" onclick="openProgrammableEditor()">
+                            <i class="fas fa-plus"></i> New Programmable Scene
+                        </button>
+                    </div>
+                    
+                    <div class="programmable-grid" id="programmable-grid">
+                        <!-- Programmable scenes will be loaded here -->
                     </div>
                 </div>
             </div>
@@ -312,6 +329,75 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeStepEditor()">Cancel</button>
                 <button class="btn btn-primary" onclick="saveStep()">Save Step</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Programmable Scene Editor Modal -->
+    <div id="programmable-editor" class="modal">
+        <div class="modal-content large">
+            <div class="modal-header">
+                <h3 id="programmable-editor-title">Programmable Scene Editor</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="editor-layout">
+                    <div class="editor-left">
+                        <div class="form-group">
+                            <label for="programmable-name">Scene Name:</label>
+                            <input type="text" id="programmable-name" placeholder="Enter programmable scene name" />
+                        </div>
+                        <div class="form-group">
+                            <label for="programmable-description">Description:</label>
+                            <textarea id="programmable-description" placeholder="Programmable scene description"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="programmable-duration">Duration (ms):</label>
+                            <input type="number" id="programmable-duration" value="5000" min="100" max="300000" />
+                        </div>
+                        <div class="form-group">
+                            <label for="programmable-loop">Loop:</label>
+                            <input type="checkbox" id="programmable-loop" />
+                        </div>
+                    </div>
+                    <div class="editor-right">
+                        <h4>Channel Expressions</h4>
+                        <div class="expression-editor" id="expression-editor">
+                            <!-- Channel expression inputs will be generated here -->
+                        </div>
+                        <div class="expression-help">
+                            <h5>Expression Help:</h5>
+                            <p>Use mathematical expressions with variable <code>t</code> (time in seconds):</p>
+                            <ul>
+                                <li><code>255 * sin(t)</code> - Sine wave from 0 to 255</li>
+                                <li><code>128 + 127 * cos(t * 2)</code> - Cosine wave centered at 128</li>
+                                <li><code>255 * (t % 2) / 2</code> - Sawtooth wave</li>
+                                <li><code>255 if t % 1 < 0.5 else 0</code> - Square wave</li>
+                                <li><code>min(255, t * 50)</code> - Linear fade in</li>
+                            </ul>
+                            <p>Available functions: sin, cos, tan, abs, min, max, pow, sqrt, floor, ceil</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="modal-footer-left">
+                    <button class="btn btn-danger" onclick="deleteProgrammableFromEditor()" id="programmable-delete-btn" style="display: none;">
+                        <i class="fas fa-trash"></i> Delete Programmable Scene
+                    </button>
+                </div>
+                <div class="modal-footer-center">
+                    <button class="btn btn-secondary btn-autostart" onclick="toggleProgrammableAutostartFromEditor()" id="programmable-autostart-btn">
+                        <i class="fas fa-play"></i> Set Autostart
+                    </button>
+                    <button class="btn btn-secondary btn-fallback" onclick="toggleProgrammableFallbackFromEditor()" id="programmable-fallback-btn">
+                        <i class="fas fa-play"></i> Set Fallback
+                    </button>
+                </div>
+                <div class="modal-footer-right">
+                    <button class="btn btn-secondary" onclick="closeProgrammableEditor()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveProgrammable()">Save Programmable Scene</button>
+                </div>
             </div>
         </div>
     </div>
