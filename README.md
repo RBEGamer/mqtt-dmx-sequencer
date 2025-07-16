@@ -45,7 +45,7 @@ $ python run.py
 ```bash
 ## PLAIN DOCKER
 $ docker build -t mqtt-dmx-sequencer .
-$ docker run --rm --network host --name mds -v config:/app/config mqtt-dmx-sequencer
+$ docker run --rm --network host --name mds -v config-directory:/app/config mqtt-dmx-sequencer
 
 ## DOCKER COMPOSE
 $ docker compose up
