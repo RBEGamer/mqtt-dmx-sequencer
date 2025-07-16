@@ -1,4 +1,7 @@
-# MQTT DMX Sequencer (Python)
+# MQTT DMX Sequencer
+
+![UI](documentation/images/Screenshot%202025-07-15%20at%2001.05.30.png)
+
 
 > Control DMX devices via Art-Net or E1.31 by MQTT with MQTT.
 
@@ -15,6 +18,9 @@ A Python implementation of the MQTT DMX Sequencer that allows you to control DMX
 - **Configuration Management**: Comprehensive settings management via JSON files
 - **MQTT Integration**: Full MQTT control with topic-based commands
 - **Sender Management**: Add, remove, and manage DMX senders via MQTT
+- **WebUI**: for channel/scene/sequence configuration and full control over playback and channels
+- **Multiinstance:** Docker support, multi instance synchronization support over MQTT
+
 
 ## Requirements
 
@@ -24,13 +30,25 @@ A Python implementation of the MQTT DMX Sequencer that allows you to control DMX
 
 ## Installation
 
-1. Clone or download this repository
-2. Install required dependencies:
+Clone or download this repository
 
+### Python 
 ```bash
-$ python3 -m venv .venv 
+$ python3 -m venv .venv
+$ source .venv/bin/activate
 $ cd mqtt-dmx-sequencer
 $ pip3 install -r requirements.txt
+$ python run.py
+```
+
+### Docker
+```bash
+## PLAIN DOCKER
+$ docker build -t mqtt-dmx-sequencer .
+$ docker run --rm --network host --name mds -v config:/app/config mqtt-dmx-sequencer
+
+## DOCKER COMPOSE
+$ docker compose up
 ```
 
 ## Project Structure
