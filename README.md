@@ -19,8 +19,11 @@ A Python implementation of the MQTT DMX Sequencer that allows you to control DMX
 - **MQTT Integration**: Full MQTT control with topic-based commands
 - **Sender Management**: Add, remove, and manage DMX senders via MQTT
 - **WebUI**: for channel/scene/sequence configuration and full control over playback and channels
-- **Multiinstance:** Docker support, multi instance synchronization support over MQTT
-
+- **Multi-Instance:** Docker support, multi instance synchronization support over MQTT
+- **Channel Follower:** Configure channel ranges to follow other given channels
+- **DMX Retransmit:** Configurable periodic DMX value retransmit functionallity, so sync up later joining lights
+- **Fallback Scenes:** Trigger scene/sequence after a settable timeout with no changed channel values
+- **Autostart:** Configure scene/sequences to autostart after startup
 
 ## Requirements
 
@@ -450,6 +453,18 @@ Check the status of all DMX senders:
 ```bash
 mosquitto_pub -h 192.168.178.75 -t "dmx/sender/status" -m ""
 ```
+
+
+## WebUI
+
+![UI](documentation/images/Screenshot%202025-07-15%20at%2001.05.30.png)
+
+There is a small simple web frontend available to:
+* Create/Edit scenes, sequences
+* See/Modify current channel values
+* Configure additional features such as retransmit, autostart, fallback
+
+
 
 ## License
 
