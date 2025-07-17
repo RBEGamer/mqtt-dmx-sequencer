@@ -198,6 +198,36 @@
         "9": "hsv_to_rgb(t * 36, 1, 1)[2]"
       }
     },
+    "percentage_fade_example": {
+      "name": "Percentage Fade Example",
+      "description": "Demonstrates the new p (percentage) variable - channels 1 and 2 fade in opposite directions based on scene progress",
+      "duration": 5000,
+      "loop": true,
+      "expressions": {
+        "1": "p * 2.55",
+        "2": "255 - (p * 2.55)",
+        "3": "128 + 127 * sin(p * 0.0628)",
+        "4": "128 + 127 * cos(p * 0.0628)",
+        "6": "255",
+        "7": "255 - (p * 2.55)",
+        "8": "128 + 127 * sin(p * 0.0628)",
+        "9": "128 + 127 * cos(p * 0.0628)"
+      }
+    },
+    "clamping_demo": {
+      "name": "Clamping Demo",
+      "description": "Demonstrates automatic clamping - channels will be clamped to 0-255 even if expressions exceed this range",
+      "duration": 3000,
+      "loop": true,
+      "expressions": {
+        "1": "sin(t) * 300",
+        "2": "clamp_dmx(sin(t) * 300)",
+        "3": "cos(t) * 400",
+        "4": "clamp(cos(t) * 400, 0, 255)",
+        "5": "t * 50",
+        "6": "clamp_dmx(t * 50)"
+      }
+    },
     "sine_wave_fade": {
       "name": "Sine Wave Fade",
       "description": "Sine wave fade on channel 1, cosine wave on channel 2",
@@ -214,7 +244,9 @@
       "duration": 3000,
       "loop": true,
       "expressions": {
-        "3": "255 * exp(-abs(sin(t * 3)))"
+        "3": "255 * exp(-abs(sin(t * 3)))",
+        "6": "255 * exp(-abs(sin(t * 3)))",
+        "7": "255"
       }
     }
   },

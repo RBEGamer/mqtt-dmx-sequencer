@@ -43,6 +43,7 @@ class ProgrammableSceneEvaluator:
             'exp': math.exp,
             'mod': lambda x, y: x % y,
             'clamp': lambda x, min_val, max_val: max(min_val, min(max_val, x)),
+            'clamp_dmx': lambda x: max(0, min(255, int(round(x)))),
             'hsv_to_rgb': self.hsv_to_rgb,
             'hsv_to_rgb_r': self.hsv_to_rgb_r,
             'hsv_to_rgb_g': self.hsv_to_rgb_g,
@@ -72,7 +73,12 @@ class ProgrammableSceneEvaluator:
         else:  # 300 <= h < 360
             r, g, b = c, 0, x
         
-        return (int((r + m) * 255), int((g + m) * 255), int((b + m) * 255))
+        # Ensure values are clamped to 0-255 range
+        r = max(0, min(255, int(round((r + m) * 255))))
+        g = max(0, min(255, int(round((g + m) * 255))))
+        b = max(0, min(255, int(round((b + m) * 255))))
+        
+        return (r, g, b)
     
     def hsv_to_rgb_r(self, h, s, v):
         """Convert HSV to RGB red channel value (0-255)"""
@@ -89,23 +95,32 @@ class ProgrammableSceneEvaluator:
         rgb = self.hsv_to_rgb(h, s, v)
         return rgb[2]
     
-    def evaluate_expression(self, expression, time_seconds, channel):
+    def evaluate_expression(self, expression, time_seconds, channel, scene_duration=None):
         """Evaluate a mathematical expression safely"""
         try:
             import re
+            
+            # Calculate percentage (0-100) based on time and duration
+            percentage = 0
+            if scene_duration and scene_duration > 0:
+                percentage = min(100.0, (time_seconds / scene_duration) * 100)
             
             # Replace variables using regex to avoid corrupting function names
             expression = re.sub(r'\btime\b', str(time_seconds), expression)
             expression = re.sub(r'\bt\b', str(time_seconds), expression)
             expression = re.sub(r'\bchannel\b', str(channel), expression)
             expression = re.sub(r'\bch\b', str(channel), expression)
+            expression = re.sub(r'\bpercentage\b', str(percentage), expression)
+            expression = re.sub(r'\bp\b', str(percentage), expression)
             
             # Create local variables
             locals_dict = {
                 'time': time_seconds,
                 't': time_seconds,
                 'channel': channel,
-                'ch': channel
+                'ch': channel,
+                'percentage': percentage,
+                'p': percentage
             }
             
             # Evaluate the expression
@@ -123,11 +138,22 @@ class ProgrammableSceneEvaluator:
                 else:
                     return 0
             
-            # Clamp result to 0-255 range for DMX
-            return max(0, min(255, int(round(result))))
+            # Ensure result is a number
+            if not isinstance(result, (int, float)):
+                print(f"Warning: Expression '{expression}' returned non-numeric result: {result}")
+                return 0
+            
+            # Always clamp result to 0-255 range for DMX
+            clamped_result = max(0, min(255, int(round(result))))
+            
+            # Log if clamping occurred (for debugging)
+            if result != clamped_result:
+                print(f"Clamped channel {channel} value from {result} to {clamped_result}")
+            
+            return clamped_result
             
         except Exception as e:
-            print(f"Error evaluating expression '{expression}': {e}")
+            print(f"Error evaluating expression '{expression}' for channel {channel}: {e}")
             return 0
 
 class MQTTDMXSequencer:
@@ -2213,7 +2239,7 @@ class MQTTDMXSequencer:
                 for channel_str, expression in expressions.items():
                     try:
                         channel = int(channel_str)
-                        value = self.programmable_scene_evaluator.evaluate_expression(expression, scene_time, channel)
+                        value = self.programmable_scene_evaluator.evaluate_expression(expression, scene_time, channel, duration)
                         channels[channel] = value
                     except (ValueError, TypeError) as e:
                         print(f"Invalid channel number or expression for channel {channel_str}: {e}")

@@ -41,14 +41,21 @@ Access the WebUI at:
 ## Programmable Scenes
 
 - Use mathematical expressions for channel values (e.g., sine, cosine, HSV color cycling)
-- Supported functions: `sin`, `cos`, `tan`, `abs`, `min`, `max`, `round`, `sqrt`, `pow`, `floor`, `ceil`, `log`, `exp`, `mod`, `clamp`, and more
+- **Available Variables**:
+  - `t` or `time`: Current time in seconds (0 to scene duration)
+  - `p` or `percentage`: Runtime percentage (0-100%) based on scene duration and progress
+  - `channel` or `ch`: Current channel number
+- **Supported Functions**: `sin`, `cos`, `tan`, `abs`, `min`, `max`, `round`, `sqrt`, `pow`, `floor`, `ceil`, `log`, `exp`, `mod`, `clamp`, `clamp_dmx`, and more
 - **HSV Color Helpers**:
-  - `hsv_to_rgb(h, s, v)` → returns `(r, g, b)` tuple
-  - `hsv_to_rgb_r(h, s, v)` → red channel only
-  - `hsv_to_rgb_g(h, s, v)` → green channel only
-  - `hsv_to_rgb_b(h, s, v)` → blue channel only
+  - `hsv_to_rgb(h, s, v)` → returns `(r, g, b)` tuple (clamped to 0-255)
+  - `hsv_to_rgb_r(h, s, v)` → red channel only (clamped to 0-255)
+  - `hsv_to_rgb_g(h, s, v)` → green channel only (clamped to 0-255)
+  - `hsv_to_rgb_b(h, s, v)` → blue channel only (clamped to 0-255)
+- **Automatic Clamping**: All channel values are automatically clamped to 0-255 range for DMX compatibility
 
-**Example:**
+**Examples:**
+
+**HSV Color Cycling:**
 ```json
 {
   "7": "hsv_to_rgb_r(t*36, 1, 1)",
@@ -56,7 +63,33 @@ Access the WebUI at:
   "9": "hsv_to_rgb_b(t*36, 1, 1)"
 }
 ```
-This will smoothly animate RGB channels 7, 8, 9 through the HSV color wheel.
+
+**Percentage-based Fade:**
+```json
+{
+  "1": "p * 2.55",
+  "2": "255 - (p * 2.55)"
+}
+```
+
+**Sine Wave with Percentage:**
+```json
+{
+  "3": "128 + 127 * sin(p * 0.0628)",
+  "4": "128 + 127 * cos(p * 0.0628)"
+}
+```
+
+**Clamping Examples:**
+```json
+{
+  "1": "clamp_dmx(sin(t) * 300)",     // Explicit clamping
+  "2": "sin(t) * 300",               // Automatic clamping
+  "3": "clamp(sin(t) * 300, 0, 255)" // Using generic clamp
+}
+```
+
+These expressions will create smooth animations based on time (`t`) or percentage progress (`p`). All values are automatically clamped to 0-255 for DMX compatibility.
 
 ---
 
