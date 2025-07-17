@@ -1,58 +1,120 @@
 # MQTT DMX Sequencer
 
-![UI](documentation/images/Screenshot%202025-07-15%20at%2001.05.30.png)
+A powerful Python-based DMX controller with MQTT integration, modern WebUI, programmable scenes, and advanced automation features. Supports Art-Net and E1.31 (sACN) protocols, multi-sender output, and full configuration via JSON and WebUI.
 
-
-> Control DMX devices via Art-Net or E1.31 by MQTT with MQTT.
-
-A Python implementation of the MQTT DMX Sequencer that allows you to control DMX devices through MQTT messages. Supports both Art-Net and E1.31 protocols for DMX output with the ability to run multiple DMX senders simultaneously and comprehensive configuration management.
+---
 
 ## Features
 
-- **Individual Channel Control**: Set specific DMX channels via MQTT
-- **Scene Switching**: Apply predefined scenes with optional transition times
-- **Sequence Playback**: Play complex sequences with timing
-- **Multiple DMX Protocols**: Support for both Art-Net and E1.31
-- **Multiple DMX Outputs**: Run multiple DMX senders simultaneously
-- **Modular Architecture**: Clean separation of DMX sender implementations
-- **Configuration Management**: Comprehensive settings management via JSON files
-- **MQTT Integration**: Full MQTT control with topic-based commands
-- **Sender Management**: Add, remove, and manage DMX senders via MQTT
-- **WebUI**: for channel/scene/sequence configuration and full control over playback and channels
-- **Multi-Instance:** Docker support, multi instance synchronization support over MQTT
-- **Channel Follower:** Configure channel ranges to follow other given channels
-- **DMX Retransmit:** Configurable periodic DMX value retransmit functionallity, so sync up later joining lights
-- **Fallback Scenes:** Trigger scene/sequence after a settable timeout with no changed channel values
-- **Autostart:** Configure scene/sequences to autostart after startup
+- **WebUI**: Modern web interface for live channel control, scene/sequence/programmable scene editing, playback, and configuration (autostart, fallback, retransmit, followers, etc.)
+- **Individual Channel Control**: Set DMX channels via MQTT or WebUI
+- **Scene Management**: Create, edit, and trigger scenes with optional transitions
+- **Sequence Playback**: Design and play step-based sequences with timing and looping
+- **Programmable Scenes**: Use mathematical expressions (including HSV color math) for dynamic effects
+- **Multiple DMX Protocols**: Art-Net and E1.31 (sACN) support
+- **Multi-Sender Output**: Drive multiple universes/outputs simultaneously
+- **MQTT Integration**: Full topic-based control for automation and remote integration
+- **Channel Followers**: Mirror/follow channel values for grouped fixtures
+- **DMX Retransmit**: Periodic DMX resend to keep late-joining devices in sync
+- **Fallback Scenes/Sequences**: Auto-trigger fallback after inactivity
+- **Autostart**: Automatically start a scene/sequence/programmable scene on boot
+- **Docker Support**: Easy deployment and multi-instance synchronization via MQTT
+- **Extensible**: Modular Python codebase, easy to add new features
 
-## Requirements
+---
 
-- Python 3.6+
-- MQTT broker (e.g., Mosquitto)
-- DMX devices supporting Art-Net or E1.31
+## WebUI
 
-## Installation
+![WebUI Screenshot](documentation/images/Screenshot%202025-07-15%20at%2001.05.30.png)
 
-Clone or download this repository
+- **Live Channel Faders**: Adjust DMX channels in real time
+- **Scene/Sequence/Programmable Scene Editor**: Create, edit, and organize all show elements
+- **Playback Controls**: Play, pause, stop, and monitor current playback
+- **Settings**: Configure retransmit, autostart, fallback, followers, and more
+- **Status Panels**: See current playback, DMX output, and system health
 
-### Python 
+Access the WebUI at:  
+`http://<your-server-ip>:5001`
+
+---
+
+## Programmable Scenes
+
+- Use mathematical expressions for channel values (e.g., sine, cosine, HSV color cycling)
+- Supported functions: `sin`, `cos`, `tan`, `abs`, `min`, `max`, `round`, `sqrt`, `pow`, `floor`, `ceil`, `log`, `exp`, `mod`, `clamp`, and more
+- **HSV Color Helpers**:
+  - `hsv_to_rgb(h, s, v)` → returns `(r, g, b)` tuple
+  - `hsv_to_rgb_r(h, s, v)` → red channel only
+  - `hsv_to_rgb_g(h, s, v)` → green channel only
+  - `hsv_to_rgb_b(h, s, v)` → blue channel only
+
+**Example:**
+```json
+{
+  "7": "hsv_to_rgb_r(t*36, 1, 1)",
+  "8": "hsv_to_rgb_g(t*36, 1, 1)",
+  "9": "hsv_to_rgb_b(t*36, 1, 1)"
+}
+```
+This will smoothly animate RGB channels 7, 8, 9 through the HSV color wheel.
+
+---
+
+## MQTT Topics
+
+- **Channel**: `dmx/set/channel/{channel}` (payload: 0-255)
+- **Scene**: `dmx/scene/{scene_name}` (payload: transition time, optional)
+- **Sequence**: `{sequence_name}` (payload: any)
+- **Sender Management**: `dmx/sender/{action}` (status, list, blackout, remove)
+- **Config Management**: `dmx/config/{action}` (show, reload, save)
+
+See full topic list and examples in the MQTT section below.
+
+---
+
+## Configuration
+
+- **settings.json**: MQTT, DMX sender, and global settings
+- **config.json**: Scenes, sequences, programmable scenes
+
+See the Configuration section for file formats and examples.
+
+---
+
+## Installation & Usage
+
+### Python
 ```bash
-$ python3 -m venv .venv
-$ source .venv/bin/activate
-$ cd mqtt-dmx-sequencer
-$ pip3 install -r requirements.txt
-$ python run.py
+python3 -m venv .venv
+source .venv/bin/activate
+cd mqtt-dmx-sequencer
+pip install -r requirements.txt
+python run.py
 ```
 
 ### Docker
 ```bash
-## PLAIN DOCKER
-$ docker build -t mqtt-dmx-sequencer .
-$ docker run --rm --network host --name mds -v config-directory:/app/config mqtt-dmx-sequencer
-
-## DOCKER COMPOSE
-$ docker compose up
+docker build -t mqtt-dmx-sequencer .
+docker run --rm --network host -v config-directory:/app/config mqtt-dmx-sequencer
+# or
+docker compose up
 ```
+
+### Command Line Options
+- `--config-dir PATH` : Use custom config directory
+- `--show-config` : Print current config and exit
+
+---
+
+## Advanced Features
+
+- **Channel Followers**: Configure channels to follow others (great for grouped fixtures)
+- **DMX Retransmit**: Periodically resend DMX to keep all devices in sync
+- **Fallback**: Auto-trigger a scene/sequence after inactivity
+- **Autostart**: Start a scene/sequence/programmable scene on boot
+- **Multi-Instance**: Synchronize multiple instances via MQTT
+
+---
 
 ## Project Structure
 
@@ -64,14 +126,14 @@ mqtt-dmx-sequencer/
 │   ├── dmx_senders.py      # DMX sender implementations
 │   ├── config_manager.py   # Configuration management
 │   ├── settings.json       # Application settings
-│   └── config.json         # Scenes and sequences
+│   └── config.json         # Scenes, sequences, programmable scenes
 ├── docker-compose.yaml
 └── README.md
 ```
 
-## Configuration
+---
 
-The application uses two configuration files:
+## Configuration Details
 
 ### 1. Settings Configuration (`settings.json`)
 
@@ -147,114 +209,40 @@ This file contains all application settings including MQTT and DMX configuration
 }
 ```
 
-### 2. Scenes and Sequences (`config.json`)
+### 2. Scenes, Sequences, and Programmable Scenes (`config.json`)
 
-This file contains scene and sequence definitions:
+This file contains scene, sequence, and programmable scene definitions:
 
 ```json
 {
   "scenes": {
     "blackout": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    "led white": [255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0],
-    "led red": [255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255]
+    "led white": [255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0]
   },
   "sequences": {
     "scene/intro": [
       { "dmx": { "1": 255, "2": 128 }, "duration": 2 },
       { "dmx": { "1": 0, "2": 255 }, "duration": 3 }
     ]
-  }
-}
-```
-
-### Scene Format
-- Array where index 0 = Channel 1, index 1 = Channel 2, etc.
-- Values: 0-255 (DMX levels)
-- Use `null` to skip a channel (don't change it)
-
-### Sequence Format
-- Array of steps with DMX values and durations
-- Each step contains `dmx` object (channel: value) and `duration` in seconds
-
-## Usage
-
-### Basic Usage
-
-```bash
-# Use default configuration files in current directory
-python run.py
-
-# Use configuration files from specific directory
-python run.py --config-dir /path/to/config/directory
-
-# Show current configuration
-python run.py --show-config
-
-# Run directly from package directory (alternative)
-python mqtt-dmx-sequencer/main.py
-```
-
-### Command Line Options
-
-```
---config-dir PATH       Directory containing settings.json and config.json files (default: script directory)
---show-config           Show current configuration and exit
-```
-
-### Configuration Directory Structure
-
-The application expects the following files in the configuration directory:
-
-```
-config-directory/
-├── settings.json       # Application settings (MQTT, DMX, etc.)
-└── config.json         # Scenes and sequences definitions
-```
-
-### Examples
-
-```bash
-# Use default configuration (current directory)
-python run.py
-
-# Use configuration from custom directory
-python run.py --config-dir /etc/mqtt-dmx-sequencer
-
-# Use configuration from user's home directory
-python run.py --config-dir ~/.mqtt-dmx-sequencer
-
-# Show configuration without starting the application
-python run.py --show-config
-```
-
-### Multiple DMX Senders Example
-
-Edit `settings.json` to configure multiple DMX senders:
-
-```json
-{
-  "dmx": {
-    "default_configs": [
-      {
-        "type": "e131",
-        "name": "stage",
-        "target": "192.168.1.10",
-        "universe": 1,
-        "fps": 40
-      },
-      {
-        "type": "artnet",
-        "name": "backdrop",
-        "target": "192.168.1.20",
-        "universe": 2,
-        "port": 6454
+  },
+  "programmable_scenes": {
+    "hsv_fade_example": {
+      "name": "HSV Fade Example",
+      "duration": 10000,
+      "loop": true,
+      "expressions": {
+        "7": "hsv_to_rgb_r(t*36, 1, 1)",
+        "8": "hsv_to_rgb_g(t*36, 1, 1)",
+        "9": "hsv_to_rgb_b(t*36, 1, 1)"
       }
-    ]
+    }
   }
 }
 ```
 
-## MQTT Topics
+---
+
+## MQTT Topics (Detailed)
 
 ### Individual Channel Control
 
@@ -265,10 +253,7 @@ Set a specific DMX channel to a value on all active senders.
 
 **Examples**:
 ```bash
-# Set channel 1 to full intensity on all senders
 mosquitto_pub -h 192.168.178.75 -t "dmx/set/channel/1" -m "255"
-
-# Set channel 5 to half intensity on all senders
 mosquitto_pub -h 192.168.178.75 -t "dmx/set/channel/5" -m "128"
 ```
 
@@ -277,14 +262,9 @@ mosquitto_pub -h 192.168.178.75 -t "dmx/set/channel/5" -m "128"
 **Topic**: `dmx/scene/{scene_name}`  
 **Payload**: `{transition_time}` (optional, seconds)
 
-Apply a predefined scene with optional transition time to all active senders.
-
 **Examples**:
 ```bash
-# Apply blackout scene immediately to all senders
 mosquitto_pub -h 192.168.178.75 -t "dmx/scene/blackout" -m ""
-
-# Apply white LED scene with 2-second transition to all senders
 mosquitto_pub -h 192.168.178.75 -t "dmx/scene/led white" -m "2.0"
 ```
 
@@ -293,11 +273,8 @@ mosquitto_pub -h 192.168.178.75 -t "dmx/scene/led white" -m "2.0"
 **Topic**: `{sequence_name}` (as defined in config.json)  
 **Payload**: Any (triggers sequence playback)
 
-Play a predefined sequence on all active senders.
-
 **Examples**:
 ```bash
-# Play intro sequence on all senders
 mosquitto_pub -h 192.168.178.75 -t "scene/intro" -m "play"
 ```
 
@@ -305,8 +282,6 @@ mosquitto_pub -h 192.168.178.75 -t "scene/intro" -m "play"
 
 **Topic**: `dmx/sender/{action}[/{sender_name}]`  
 **Payload**: Any (triggers action)
-
-Manage DMX senders via MQTT.
 
 **Actions**:
 - `dmx/sender/status` - Get status of all senders
@@ -317,19 +292,10 @@ Manage DMX senders via MQTT.
 
 **Examples**:
 ```bash
-# Get status of all senders
 mosquitto_pub -h 192.168.178.75 -t "dmx/sender/status" -m ""
-
-# List all active senders
 mosquitto_pub -h 192.168.178.75 -t "dmx/sender/list" -m ""
-
-# Blackout all senders
 mosquitto_pub -h 192.168.178.75 -t "dmx/sender/blackout" -m ""
-
-# Blackout specific sender
 mosquitto_pub -h 192.168.178.75 -t "dmx/sender/blackout/stage" -m ""
-
-# Remove specific sender
 mosquitto_pub -h 192.168.178.75 -t "dmx/sender/remove/backdrop" -m ""
 ```
 
@@ -338,8 +304,6 @@ mosquitto_pub -h 192.168.178.75 -t "dmx/sender/remove/backdrop" -m ""
 **Topic**: `dmx/config/{action}`  
 **Payload**: Any (triggers action)
 
-Manage application configuration via MQTT.
-
 **Actions**:
 - `dmx/config/show` - Show current configuration
 - `dmx/config/reload` - Reload configuration from file
@@ -347,15 +311,12 @@ Manage application configuration via MQTT.
 
 **Examples**:
 ```bash
-# Show current configuration
 mosquitto_pub -h 192.168.178.75 -t "dmx/config/show" -m ""
-
-# Reload configuration from file
 mosquitto_pub -h 192.168.178.75 -t "dmx/config/reload" -m ""
-
-# Save current configuration
 mosquitto_pub -h 192.168.178.75 -t "dmx/config/save" -m ""
 ```
+
+---
 
 ## DMX Protocol Support
 
@@ -371,104 +332,19 @@ mosquitto_pub -h 192.168.178.75 -t "dmx/config/save" -m ""
 - Multicast support
 - Compatible with many LED controllers and lighting systems
 
-## Architecture
-
-The application uses a modular architecture with the following components:
-
-### Configuration Management (`mqtt-dmx-sequencer/config_manager.py`)
-- **ConfigManager**: Manages application settings
-- Loads and saves configuration from JSON files
-- Validates configuration data
-- Merges command line arguments with settings
-
-### DMX Senders Module (`mqtt-dmx-sequencer/dmx_senders.py`)
-- **DMXSender**: Abstract base class for all DMX senders
-- **ArtNetSender**: Art-Net protocol implementation
-- **E131Sender**: E1.31 protocol implementation
-- **DMXManager**: Manages multiple DMX senders
-
-### Main Application (`mqtt-dmx-sequencer/main.py`)
-- **MQTTDMXSequencer**: Main application class
-- Handles MQTT communication
-- Manages scenes and sequences
-- Coordinates multiple DMX senders
-- Integrates with configuration management
+---
 
 ## Troubleshooting
 
-### Common Issues
+See the Troubleshooting section above for common issues and solutions.
 
-1. **MQTT Connection Failed**
-   - Check MQTT broker is running
-   - Verify broker URL and port in settings.json
-   - Check network connectivity
-   - Verify authentication credentials if required
-
-2. **DMX Not Working**
-   - Verify DMX device IP address in settings.json
-   - Check universe number matches device
-   - Ensure device supports chosen protocol (Art-Net or E1.31)
-   - Check protocol-specific settings (port, fps, etc.)
-
-3. **Scene/Sequence Not Found**
-   - Check scene/sequence name in config.json
-   - Verify JSON syntax is correct
-   - Restart application after config changes
-
-4. **Multiple Senders Not Working**
-   - Verify each sender has a unique name in settings.json
-   - Check that target IPs are correct
-   - Ensure universe numbers don't conflict
-   - Validate DMX configurations using `--show-config`
-
-5. **Configuration Issues**
-   - Check JSON syntax in settings.json and config.json
-   - Use `--show-config` to verify current settings
-   - Reload configuration via MQTT: `dmx/config/reload`
-
-### Debug Mode
-
-Run with verbose logging to troubleshoot:
-
-```bash
-python run.py --verbosity debug
-```
-
-### Configuration Verification
-
-Check the current configuration:
-
-```bash
-# Show configuration from command line
-python run.py --show-config
-
-# Show configuration via MQTT
-mosquitto_pub -h 192.168.178.75 -t "dmx/config/show" -m ""
-```
-
-### Sender Status
-
-Check the status of all DMX senders:
-
-```bash
-mosquitto_pub -h 192.168.178.75 -t "dmx/sender/status" -m ""
-```
-
-
-## WebUI
-
-![UI](documentation/images/Screenshot%202025-07-15%20at%2001.05.30.png)
-
-There is a small simple web frontend available to:
-* Create/Edit scenes, sequences
-* See/Modify current channel values
-* Configure additional features such as retransmit, autostart, fallback
-
-
+---
 
 ## License
 
-MIT License - see LICENSE file for details.
+MIT License
+
+---
 
 ## Contributing
 
