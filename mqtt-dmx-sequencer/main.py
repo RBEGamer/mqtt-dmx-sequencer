@@ -43,7 +43,10 @@ class ProgrammableSceneEvaluator:
             'exp': math.exp,
             'mod': lambda x, y: x % y,
             'clamp': lambda x, min_val, max_val: max(min_val, min(max_val, x)),
-            'hsv_to_rgb': self.hsv_to_rgb
+            'hsv_to_rgb': self.hsv_to_rgb,
+            'hsv_to_rgb_r': self.hsv_to_rgb_r,
+            'hsv_to_rgb_g': self.hsv_to_rgb_g,
+            'hsv_to_rgb_b': self.hsv_to_rgb_b
         }
     
     def hsv_to_rgb(self, h, s, v):
@@ -70,6 +73,21 @@ class ProgrammableSceneEvaluator:
             r, g, b = c, 0, x
         
         return (int((r + m) * 255), int((g + m) * 255), int((b + m) * 255))
+    
+    def hsv_to_rgb_r(self, h, s, v):
+        """Convert HSV to RGB red channel value (0-255)"""
+        rgb = self.hsv_to_rgb(h, s, v)
+        return rgb[0]
+    
+    def hsv_to_rgb_g(self, h, s, v):
+        """Convert HSV to RGB green channel value (0-255)"""
+        rgb = self.hsv_to_rgb(h, s, v)
+        return rgb[1]
+    
+    def hsv_to_rgb_b(self, h, s, v):
+        """Convert HSV to RGB blue channel value (0-255)"""
+        rgb = self.hsv_to_rgb(h, s, v)
+        return rgb[2]
     
     def evaluate_expression(self, expression, time_seconds, channel):
         """Evaluate a mathematical expression safely"""
@@ -124,6 +142,7 @@ class MQTTDMXSequencer:
         self.subscriptions_done = False
         self.mqtt_reconnect_attempts = 0
         self.max_mqtt_reconnect_attempts = 3
+        self.current_mqtt_subscriptions = set()  # Track current subscriptions
         
         # Enhanced playback state management
         self.current_sequence_playback = None
@@ -391,6 +410,9 @@ class MQTTDMXSequencer:
                 self.config['scenes'][scene_name] = channels
                 self.save_config()
                 
+                # Refresh MQTT subscriptions
+                self.refresh_mqtt_subscriptions()
+                
                 return jsonify({
                     "success": True,
                     "message": f"Scene '{scene_name}' created successfully"
@@ -440,6 +462,9 @@ class MQTTDMXSequencer:
                 self.config['scenes'][scene_id] = channels
                 self.save_config()
                 
+                # Refresh MQTT subscriptions
+                self.refresh_mqtt_subscriptions()
+                
                 return jsonify({
                     "success": True,
                     "message": f"Scene '{scene_id}' updated successfully"
@@ -463,6 +488,9 @@ class MQTTDMXSequencer:
                 
                 del self.config['scenes'][scene_id]
                 self.save_config()
+                
+                # Refresh MQTT subscriptions
+                self.refresh_mqtt_subscriptions()
                 
                 return jsonify({
                     "success": True,
@@ -564,6 +592,9 @@ class MQTTDMXSequencer:
                 }
                 self.save_config()
                 
+                # Refresh MQTT subscriptions
+                self.refresh_mqtt_subscriptions()
+                
                 return jsonify({
                     "success": True,
                     "message": f"Sequence '{sequence_name}' created successfully"
@@ -612,6 +643,9 @@ class MQTTDMXSequencer:
                 }
                 self.save_config()
                 
+                # Refresh MQTT subscriptions
+                self.refresh_mqtt_subscriptions()
+                
                 return jsonify({
                     "success": True,
                     "message": f"Sequence '{sequence_id}' updated successfully"
@@ -635,6 +669,9 @@ class MQTTDMXSequencer:
                 
                 del self.config['sequences'][sequence_id]
                 self.save_config()
+                
+                # Refresh MQTT subscriptions
+                self.refresh_mqtt_subscriptions()
                 
                 return jsonify({
                     "success": True,
@@ -1670,27 +1707,8 @@ class MQTTDMXSequencer:
             
             # Only subscribe once to avoid duplicate subscriptions
             if not self.subscriptions_done:
-                # Subscribe to sequence topics
-                for topic in self.config.get('sequences', {}).keys():
-                    print(f"Subscribing to topic: {topic}")
-                    client.subscribe(topic)
-                
-                # Subscribe to individual channel control topics
-                client.subscribe("dmx/set/channel/#")
-                print("Subscribed to dmx/set/channel/# for individual channel control")
-                
-                # Subscribe to scene control topics
-                client.subscribe("dmx/scene/#")
-                print("Subscribed to dmx/scene/# for scene control")
-                
-                # Subscribe to DMX sender management topics
-                client.subscribe("dmx/sender/#")
-                print("Subscribed to dmx/sender/# for sender management")
-                
-                # Subscribe to configuration management topics
-                client.subscribe("dmx/config/#")
-                print("Subscribed to dmx/config/# for configuration management")
-                
+                # Initialize subscriptions
+                self.refresh_mqtt_subscriptions()
                 self.subscriptions_done = True
         else:
             print(f"Failed to connect to MQTT broker with return code: {rc}")
@@ -1775,6 +1793,51 @@ class MQTTDMXSequencer:
             self.client = None
             self.mqtt_connected = False
             print("MQTT reconnection stopped")
+
+    def refresh_mqtt_subscriptions(self):
+        """Refresh MQTT subscriptions based on current configuration"""
+        if not self.client or not self.mqtt_connected:
+            print("MQTT not connected, skipping subscription refresh")
+            return
+        
+        print("Refreshing MQTT subscriptions...")
+        
+        # Get current configuration
+        current_config = self.load_config(self.config_manager.settings_path.replace('settings.json', 'config.json'))
+        
+        # Calculate new subscriptions
+        new_subscriptions = set()
+        
+        # Add sequence subscriptions
+        for topic in current_config.get('sequences', {}).keys():
+            new_subscriptions.add(topic)
+        
+        # Add standard subscriptions
+        standard_topics = [
+            "dmx/set/channel/#",
+            "dmx/scene/#", 
+            "dmx/sender/#",
+            "dmx/config/#"
+        ]
+        for topic in standard_topics:
+            new_subscriptions.add(topic)
+        
+        # Unsubscribe from topics that are no longer needed
+        topics_to_unsubscribe = self.current_mqtt_subscriptions - new_subscriptions
+        for topic in topics_to_unsubscribe:
+            if topic not in standard_topics:  # Don't unsubscribe from standard topics
+                print(f"Unsubscribing from topic: {topic}")
+                self.client.unsubscribe(topic)
+                self.current_mqtt_subscriptions.discard(topic)
+        
+        # Subscribe to new topics
+        topics_to_subscribe = new_subscriptions - self.current_mqtt_subscriptions
+        for topic in topics_to_subscribe:
+            print(f"Subscribing to topic: {topic}")
+            self.client.subscribe(topic)
+            self.current_mqtt_subscriptions.add(topic)
+        
+        print(f"MQTT subscriptions refreshed. Current subscriptions: {len(self.current_mqtt_subscriptions)}")
 
     def on_message(self, client, userdata, msg):
         topic = msg.topic
